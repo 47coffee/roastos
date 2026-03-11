@@ -5,6 +5,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+"""This module defines the core data models for the RoastOS system using Pydantic for validation and type enforcement.  
+"""
+
 
 class RoastSession(BaseModel):
     roast_id: str

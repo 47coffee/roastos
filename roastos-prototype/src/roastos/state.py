@@ -1,13 +1,19 @@
-from .types import RoastState
+from roastos.types import RoastState
 
+"""This module defines the initial_state function, which returns a default RoastState 
+object representing the starting conditions of a coffee roast. The initial 
+state includes typical values for bean temperature, drum energy, drying progress, 
+Maillard progress, development progress, volatile loss, and structural transformation. 
+This function can be used to initialize the roast state at the beginning of a roasting
+ session or simulation, providing a consistent starting point for the 
+ dynamics model and controller to work from."""
 
-def initial_state():
-
+def initial_state() -> RoastState:
     return RoastState(
         Tb=180.0,
-        E_drum=0.7,
+        E_drum=0.72,
         p_dry=0.95,
-        p_mai=0.75,
+        p_mai=0.78,
         p_dev=0.00,
         V_loss=0.05,
         S_struct=0.30,

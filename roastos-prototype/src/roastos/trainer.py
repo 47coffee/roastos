@@ -15,7 +15,8 @@ from roastos.dataset_builder import build_training_data_from_dir
 """For simplicity, we train and evaluate on the same dataset for now.
 Later we will replace this with proper train/validation splits."""
 """We also print out feature importances to get insights into which features are most influential for each flavor target."""
-"""The models are saved to disk using joblib, and a summary JSON file is created containing the evaluation metrics and top features for each target."""
+"""The models are saved to disk using joblib, and a summary JSON file is created containing the evaluation 
+metrics and top features for each target."""
 
 """Flavor targets we want to predict - these should match the columns in the dataset builder output."""
 """It trains 4 separate models:

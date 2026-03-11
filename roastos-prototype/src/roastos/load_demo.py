@@ -1,7 +1,11 @@
 from pathlib import Path
 from roastos.data_loader import load_full_dataset
 
-
+"""This script serves as a simple demonstration of loading the full dataset using the load_full_dataset function from the data_loader module. 
+It prints out the number of sessions, timeseries rows, features, outcomes, 
+and coffee lots loaded, as well as a sample session and timeseries row to verify 
+that the data has been loaded correctly. This can be used as a quick check to ensure 
+that the data loading process is working as expected before proceeding with further analysis or model training."""
 def main():
     dataset = load_full_dataset(Path("data/mock"))
 

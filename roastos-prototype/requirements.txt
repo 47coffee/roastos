@@ -1,0 +1,11 @@
+numpy
+pandas
+scipy
+matplotlib
+plotly
+scikit-learn
+streamlit
+pydantic
+pytest
+black
+ruff

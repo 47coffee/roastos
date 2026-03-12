@@ -2,22 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from roastos.advisor import AdvisorContext, build_recommendation
 from roastos.controller import RoastController
 from roastos.estimator import RoastStateEstimator
-from roastos.features import extract_features
 from roastos.gateway.dummy_dutchmaster import DummyDutchMasterGateway
-from roastos.gateway.schemas import RoastRecommendation
+from roastos.logger import RoastRuntimeLogger
 from roastos.mpc import RoastMPC
 from roastos.state import initial_state
 from roastos.types import Control
 
 """This module defines the main demonstration loop for the RoastOS system using a dummy gateway that simulates a Dutch Masters roasting machine.
-The run_dummy_live_loop function simulates a live roasting session by iteratively reading measurement frames from the dummy gateway, updating the state estimator, optimizing control inputs with MPC, and generating recommendations using the RoastController.
-The loop prints out the current measurements, estimated state, MPC objective value, and the recommended 
-control adjustments along with the predicted flavor attributes at each step. This serves as a 
-demonstration of how the various components of the RoastOS system interact in a live control scenario, 
-and allows for testing and validation of the state estimation, MPC optimization, and control 
-recommendation logic before integrating with a real roasting machine API."""
+The main function simulates a live roasting session by defining an initial roast state, a target flavor 
+profile, session context, coffee context, and a set of candidate control sequences. It then initializes 
+the RoastController with a trained model directory, evaluates the candidate control sequences to determine 
+the best option, and prints out the evaluations and the recommended control adjustments along with the predicted 
+flavor attributes. Finally, it plots the simulated trajectories for each candidate control sequence and saves 
+the plot to a specified path. This serves as a demonstration of how the various components of 
+the RoastOS system interact in a live control scenario, allowing for testing and validation of 
+the controller's decision-making logic before integrating with a real roasting machine API."""
 
 def build_target_structure(style_profile: str) -> dict:
     """
@@ -35,7 +37,6 @@ def build_target_structure(style_profile: str) -> dict:
             "Tb_end_c": 205.0,
         }
 
-    # default espresso-ish fallback
     return {
         "dry": 0.38,
         "maillard": 0.42,
@@ -97,8 +98,9 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         coffee_context=coffee_context,
     )
 
-    mpc = RoastMPC(horizon_steps=20, dt_s=2.0)
+    mpc = RoastMPC(horizon_steps=20, dt_s=2.0, n_blocks=4)
     controller = RoastController(model_dir=project_root / "artifacts" / "models")
+    logger = RoastRuntimeLogger(project_root / "artifacts" / "runtime_log.csv")
 
     current_control = Control(
         gas_pct=75.0,
@@ -131,7 +133,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         estimated_state = estimator.update(frame, current_control)
 
         # ------------------------------------------------------------
-        # 3. Optimize future controls with MPC
+        # 3. Solve MPC
         # ------------------------------------------------------------
         mpc_result = mpc.optimize(
             x0=estimated_state,
@@ -143,8 +145,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         recommended_control = mpc_result.controls[0]
 
         # ------------------------------------------------------------
-        # 4. Use existing controller/predictor stack to forecast flavor
-        #    of the recommended sequence
+        # 4. Forecast flavor of recommended sequence
         # ------------------------------------------------------------
         best_eval, _ = controller.choose_best_option(
             initial_state=estimated_state,
@@ -154,23 +155,22 @@ def run_dummy_live_loop(steps: int = 20) -> None:
             coffee_context=coffee_context,
         )
 
-        rec = RoastRecommendation(
-            recommended_gas_pct=recommended_control.gas_pct,
-            recommended_drum_pressure_pa=recommended_control.drum_pressure_pa,
-            recommended_drum_speed_pct=recommended_control.drum_speed_pct,
-            message=(
-                f"Step {step_idx+1}: set gas to {recommended_control.gas_pct:.1f}%, "
-                f"drum pressure to {recommended_control.drum_pressure_pa:.1f} Pa, "
-                f"drum speed to {recommended_control.drum_speed_pct:.1f}%."
-            ),
-            predicted_clarity=best_eval.predicted_flavor["clarity"],
-            predicted_sweetness=best_eval.predicted_flavor["sweetness"],
-            predicted_body=best_eval.predicted_flavor["body"],
-            predicted_bitterness=best_eval.predicted_flavor["bitterness"],
+        # ------------------------------------------------------------
+        # 5. Build human-readable recommendation
+        # ------------------------------------------------------------
+        recommendation = build_recommendation(
+            AdvisorContext(
+                current_control=current_control,
+                recommended_control=recommended_control,
+                estimated_state=estimated_state,
+                frame=frame,
+                mpc_result=mpc_result,
+                predicted_flavor=best_eval.predicted_flavor,
+            )
         )
 
         # ------------------------------------------------------------
-        # 5. Print recommendation
+        # 6. Print live status
         # ------------------------------------------------------------
         print(f"\nTime {frame.timestamp_s:6.1f}s | Machine state: {frame.machine_state}")
         print(
@@ -179,27 +179,40 @@ def run_dummy_live_loop(steps: int = 20) -> None:
             f"Gas={frame.gas_pct:5.1f}%, Pressure={frame.drum_pressure_pa:6.1f} Pa"
         )
         print(
-            f"Estimated -> Tb={estimated_state.Tb:6.2f}, RoR={estimated_state.RoR*60.0:6.2f}°C/min, "
+            f"Estimated -> Tb={estimated_state.Tb:6.2f}, "
+            f"RoR={estimated_state.RoR*60.0:6.2f}°C/min, "
             f"M={estimated_state.M:5.3f}, P_int={estimated_state.P_int:5.3f}, "
             f"Mai={estimated_state.p_mai:5.3f}, Dev={estimated_state.p_dev:5.3f}"
         )
+
         if mpc_result.success:
             print(f"MPC objective: {mpc_result.objective_value:.4f} | status={mpc_result.status}")
         else:
             print(f"MPC fallback used | status={mpc_result.status}")
-        print(rec.message)
-        print(
-            f"Predicted flavor -> clarity={rec.predicted_clarity:.3f}, "
-            f"sweetness={rec.predicted_sweetness:.3f}, "
-            f"body={rec.predicted_body:.3f}, "
-            f"bitterness={rec.predicted_bitterness:.3f}"
+
+        print("Recommendation:")
+        print(f"  {recommendation.message}")
+
+        # ------------------------------------------------------------
+        # 7. Log step
+        # ------------------------------------------------------------
+        logger.log_step(
+            frame=frame,
+            estimated_state=estimated_state,
+            current_control=current_control,
+            recommendation=recommendation,
+            mpc_success=mpc_result.success,
+            mpc_objective=mpc_result.objective_value,
+            mpc_status=mpc_result.status,
         )
 
         # ------------------------------------------------------------
-        # 6. Simulate operator following RoastOS recommendation
+        # 8. Simulate operator following recommendation
         # ------------------------------------------------------------
         current_control = recommended_control
         gateway.apply_control(current_control)
+
+    print(f"\nRuntime log saved to: {project_root / 'artifacts' / 'runtime_log.csv'}")
 
 
 if __name__ == "__main__":

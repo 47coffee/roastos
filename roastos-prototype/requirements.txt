@@ -10,3 +10,5 @@ pytest
 black
 ruff
 casadi
+pyarrow 
+openpyxl

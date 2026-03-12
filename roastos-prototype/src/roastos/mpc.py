@@ -5,25 +5,11 @@ from dataclasses import dataclass
 import casadi as ca
 
 from roastos.types import Control, RoastState
+from roastos.twin_loader import load_twin_params
 
-"""This module defines the RoastMPC class, which implements a more robust nonlinear Model Predictive Control (MPC) 
-strategy for optimizing the control inputs during the roasting process. The MPC formulation includes move blocking, rate constraints on 
-the control inputs, and a softer objective function that balances multiple aspects of the roast's internal state with 
-the target flavor profile. The optimize method sets up and solves the MPC problem using CasADi, and includes a 
-graceful fallback mechanism in case the solver fails to find a solution, ensuring that the system can continue 
-operating by holding the current control inputs over the horizon. This class serves as an advanced control 
-optimization component within the RoastOS system, enabling it to recommend control actions that are 
-expected to yield the desired flavor outcome based on the current state of the roast and the coffee context parameters."""
 
 MIN_PRESSURE_PA = 50.0
 MAX_PRESSURE_PA = 150.0
-
-
-def _pressure_norm_symbolic(pressure_pa):
-    return ca.fmax(
-        0.0,
-        ca.fmin(1.0, (pressure_pa - MIN_PRESSURE_PA) / (MAX_PRESSURE_PA - MIN_PRESSURE_PA)),
-    )
 
 
 @dataclass
@@ -36,11 +22,12 @@ class MPCResult:
 
 class RoastMPC:
     """
-    More robust v1 nonlinear MPC:
-    - move blocking
-    - rate constraints
-    - softer objective
-    - graceful fallback on failure
+    RoastOS nonlinear MPC using the calibrated Digital Twin model.
+
+    Notes:
+    - Uses move blocking for robustness
+    - Optimizes toward structural targets for now
+    - Falls back gracefully if IPOPT fails
     """
 
     def __init__(
@@ -48,13 +35,48 @@ class RoastMPC:
         horizon_steps: int = 20,
         dt_s: float = 2.0,
         n_blocks: int = 4,
+        physics_model_path: str = "artifacts/models/physics_model.json",
     ):
         self.N = horizon_steps
         self.dt_s = dt_s
         self.n_blocks = n_blocks
         self.block_len = max(1, horizon_steps // n_blocks)
+        self.params = load_twin_params(physics_model_path)
 
-    def _step_symbolic(self, x, u, density: float, moisture: float):
+    def _expand_block_controls(self, U_block):
+        """
+        Expand block controls [3, n_blocks] into per-step controls [3, N].
+        """
+        cols = []
+        for b in range(self.n_blocks):
+            for _ in range(self.block_len):
+                cols.append(U_block[:, b])
+
+        while len(cols) < self.N:
+            cols.append(U_block[:, self.n_blocks - 1])
+
+        cols = cols[: self.N]
+        return ca.hcat(cols)
+
+    def _compute_roast_progress(self, M, p_mai, p_dev, moisture0):
+        p_dry = 1.0 - (M / moisture0)
+        p_dry = ca.fmax(0.0, ca.fmin(1.0, p_dry))
+
+        roast_progress = (
+            0.45 * p_dry
+            + 0.40 * p_mai
+            + 0.15 * p_dev
+        )
+        return ca.fmax(0.0, ca.fmin(1.0, roast_progress))
+
+    def _step_symbolic(self, x, u, density: float, moisture0: float):
+        """
+        Symbolic Digital Twin step for CasADi.
+        State:
+            [Tb, RoR, E_drum, M, P_int, p_mai, p_dev, V_loss, S_struct]
+        Control:
+            [gas_pct, drum_pressure_pa, drum_speed_pct]
+        """
         Tb = x[0]
         RoR = x[1]
         E_drum = x[2]
@@ -70,93 +92,112 @@ class RoastMPC:
         drum_speed_pct = u[2]
 
         gas = gas_pct / 100.0
-        pnorm = _pressure_norm_symbolic(pressure_pa)
+        pressure = pressure_pa
         drum_speed = drum_speed_pct / 100.0
 
-        density_factor = 1.0 - 0.15 * (density - 0.78)
-        moisture_factor = 1.0 - 0.35 * (moisture - 0.11)
-        bean_response = ca.fmax(0.75, ca.fmin(1.25, density_factor * moisture_factor))
+        roast_progress = self._compute_roast_progress(M, p_mai, p_dev, moisture0)
 
+        # ------------------------------------------------------------
         # Drum energy
-        E_amb = 0.35
-        a_g = 0.070
-        a_p = 0.035
-        a_l = 0.020
-        dE = (a_g * gas - a_p * pnorm - a_l * (E_drum - E_amb)) * (self.dt_s / 2.0)
-        E_drum_next = ca.fmax(0.0, ca.fmin(1.6, E_drum + dE))
+        # ------------------------------------------------------------
+        dE = (
+            0.018 * gas
+            - (0.010 + 0.006 * (pressure / 120.0)) * E_drum
+        ) * self.dt_s
 
-        # Environment
-        T_base = 150.0
-        b_d = 55.0
-        b_g = 60.0
-        b_p = 20.0
-        T_env = T_base + b_d * E_drum + b_g * gas - b_p * pnorm
+        E_drum_next = ca.fmax(0.0, ca.fmin(1.0, E_drum + dE))
 
+        # ------------------------------------------------------------
+        # Environment / ET proxy
+        # ------------------------------------------------------------
+        ET_proxy = Tb + 170.0 * E_drum_next
+        et_delta = ET_proxy - Tb
+
+        # ------------------------------------------------------------
+        # BT update from calibrated coefficients
+        # IMPORTANT:
+        # physics_calibration used pressure in raw Pa units.
+        # ------------------------------------------------------------
+        dTb = (
+            self.params["intercept"]
+            + self.params["alpha_gas"] * gas
+            + self.params["beta_et"] * et_delta
+            - self.params["gamma_pressure"] * pressure
+            - self.params["delta_ror"] * (RoR * 60.0)
+        )
+
+        Tb_next = Tb + dTb * self.dt_s
+
+        # ------------------------------------------------------------
+        # RoR update
+        # ------------------------------------------------------------
+        dRoR = (
+            self.params["ror_gas_gain"] * gas
+            + self.params["ror_et_gain"] * et_delta
+            - self.params["ror_pressure_cooling"] * pressure
+            - self.params["ror_progress_decay"] * roast_progress
+            - 0.12 * RoR
+        )
+
+        dRoR = dRoR - 0.04 * ca.fmax(drum_speed - 0.65, 0.0)
+
+        RoR_next = ca.fmax(-0.2, ca.fmin(0.8, RoR + dRoR * self.dt_s))
+
+        # ------------------------------------------------------------
         # Moisture
-        T_evap = 100.0
-        c_m = 0.010
-        evap_gate = 1.0 / (1.0 + ca.exp(-0.10 * (Tb - T_evap)))
-        r_evap = c_m * evap_gate * M * (0.9 + 1.2 * moisture) * (1.0 + 0.25 * ca.fmax(RoR, 0.0))
-        M_next = ca.fmax(0.0, ca.fmin(0.20, M - r_evap * (self.dt_s / 2.0)))
+        # ------------------------------------------------------------
+        evap = (
+            self.params["moisture_evap_coeff"]
+            * ca.fmax(0.0, Tb_next - 140.0)
+            * M
+            * self.dt_s
+        )
+        M_next = ca.fmax(0.0, M - evap)
 
-        # Pressure
-        T_p = 160.0
-        c_p1 = 0.030
-        c_p2 = 0.040
-        c_p3 = 0.020
-        pressure_build = c_p1 * (1.0 / (1.0 + ca.exp(-0.12 * (Tb - T_p)))) * (M / 0.12)
-        pressure_release = c_p2 * P_int + c_p3 * pnorm
-        P_int_next = ca.fmax(0.0, ca.fmin(2.0, P_int + (pressure_build - pressure_release) * (self.dt_s / 2.0)))
+        # ------------------------------------------------------------
+        # Internal pressure
+        # ------------------------------------------------------------
+        pressure_build = self.params["pressure_build_coeff"] * ca.fmax(0.0, Tb_next - 170.0)
+        pressure_release = self.params["pressure_release_coeff"] * (pressure / 100.0)
+        P_int_next = ca.fmax(0.0, P_int + (pressure_build - pressure_release) * self.dt_s)
 
-        # RoR heat balance
-        k_h = 0.022 * bean_response
-        k_e = 1.8
-        k_r = 0.10
-        dRoR = (k_h * (T_env - Tb) - k_e * M - k_r * RoR) * (self.dt_s / 2.0)
-        dRoR = dRoR - 0.12 * ca.fmax(drum_speed - 0.65, 0.0)
-        RoR_next = ca.fmax(-1.0, ca.fmin(5.0, RoR + dRoR))
-
-        # Temperature
-        Tb_next = ca.fmax(20.0, ca.fmin(260.0, Tb + RoR_next * self.dt_s))
-
+        # ------------------------------------------------------------
         # Maillard
-        T_mai = 148.0
-        c_mai = 0.010
-        mai_rate = (
-            c_mai
-            * (1.0 / (1.0 + ca.exp(-0.12 * (Tb - T_mai))))
-            * (1.0 - p_mai)
-            * (1.0 - 0.5 * (M / 0.12))
-            * ca.exp(0.010 * ca.fmax(Tb - 150.0, 0.0))
+        # ------------------------------------------------------------
+        p_mai_next = ca.fmax(
+            0.0,
+            ca.fmin(1.0, p_mai + 0.0020 * ca.fmax(0.0, Tb_next - 150.0) * self.dt_s),
         )
-        p_mai_next = ca.fmax(0.0, ca.fmin(1.0, p_mai + mai_rate * (self.dt_s / 2.0)))
 
+        # ------------------------------------------------------------
         # Development
-        P_fc = 0.20
-        c_dev = 0.020
-        dev_rate = c_dev * (1.0 / (1.0 + ca.exp(-15.0 * (P_int - P_fc)))) * (1.0 - p_dev)
-        p_dev_next = ca.fmax(0.0, ca.fmin(1.0, p_dev + dev_rate * (self.dt_s / 2.0)))
-
-        # Volatile loss
-        T_v0 = 170.0
-        c_v = 0.0018
-        alpha_v = 0.030
-        beta_p = 0.9
-        thermal_excess = ca.fmax(Tb - T_v0, 0.0)
-        vloss_rate = c_v * ca.exp(alpha_v * thermal_excess) * (1.0 + beta_p * pnorm)
-        V_loss_next = ca.fmax(0.0, ca.fmin(3.0, V_loss + vloss_rate * (self.dt_s / 2.0)))
-
-        # Structure
-        T_s = 160.0
-        c_s1 = 0.040
-        c_s2 = 0.090
-        c_s3 = 0.004
-        struct_rate = (
-            c_s1 * p_mai
-            + c_s2 * p_dev
-            + c_s3 * (1.0 / (1.0 + ca.exp(-0.10 * (Tb - T_s))))
+        # ------------------------------------------------------------
+        p_dev_next = ca.fmax(
+            0.0,
+            ca.fmin(1.0, p_dev + 0.0022 * ca.fmax(0.0, Tb_next - 195.0) * self.dt_s),
         )
-        S_struct_next = ca.fmax(0.0, ca.fmin(3.0, S_struct + struct_rate * (self.dt_s / 2.0)))
+
+        # ------------------------------------------------------------
+        # Volatile loss
+        # ------------------------------------------------------------
+        V_loss_next = ca.fmax(
+            0.0,
+            ca.fmin(1.0, V_loss + 0.0012 * ca.fmax(0.0, Tb_next - 180.0) * self.dt_s),
+        )
+
+        # ------------------------------------------------------------
+        # Structure
+        # ------------------------------------------------------------
+        S_struct_next = ca.fmax(
+            0.0,
+            ca.fmin(
+                1.0,
+                S_struct + (
+                    0.012 * p_dev_next
+                    + 0.004 * Tb_next / 200.0
+                ) * self.dt_s,
+            ),
+        )
 
         return ca.vertcat(
             Tb_next,
@@ -170,22 +211,6 @@ class RoastMPC:
             S_struct_next,
         )
 
-    def _expand_block_controls(self, U_block):
-        """
-        Expand block controls [3, n_blocks] into per-step controls [3, N].
-        """
-        cols = []
-        for b in range(self.n_blocks):
-            for _ in range(self.block_len):
-                cols.append(U_block[:, b])
-
-        # Trim or pad to exactly N
-        if len(cols) < self.N:
-            while len(cols) < self.N:
-                cols.append(U_block[:, self.n_blocks - 1])
-        cols = cols[: self.N]
-        return ca.hcat(cols)
-
     def optimize(
         self,
         *,
@@ -196,13 +221,12 @@ class RoastMPC:
     ) -> MPCResult:
         opti = ca.Opti()
 
-        # Optimize only block controls
         U_block = opti.variable(3, self.n_blocks)
         U = self._expand_block_controls(U_block)
         X = opti.variable(9, self.N + 1)
 
         density = float(coffee_context.get("density", 0.78))
-        moisture = float(coffee_context.get("moisture", 0.11))
+        moisture0 = float(coffee_context.get("moisture", 0.11))
 
         x0_vec = ca.vertcat(
             x0.Tb,
@@ -218,12 +242,16 @@ class RoastMPC:
 
         opti.subject_to(X[:, 0] == x0_vec)
 
+        # ------------------------------------------------------------
         # Bounds
-        opti.subject_to(opti.bounded(0.0, U_block[0, :], 100.0))
-        opti.subject_to(opti.bounded(MIN_PRESSURE_PA, U_block[1, :], MAX_PRESSURE_PA))
-        opti.subject_to(opti.bounded(50.0, U_block[2, :], 80.0))
+        # ------------------------------------------------------------
+        opti.subject_to(opti.bounded(0.0, U_block[0, :], 100.0))                  # gas %
+        opti.subject_to(opti.bounded(MIN_PRESSURE_PA, U_block[1, :], MAX_PRESSURE_PA))  # pressure Pa
+        opti.subject_to(opti.bounded(50.0, U_block[2, :], 80.0))                 # drum speed %
 
+        # ------------------------------------------------------------
         # Rate constraints between blocks
+        # ------------------------------------------------------------
         max_dgas = 8.0
         max_dpressure = 15.0
         max_ddrum = 5.0
@@ -241,18 +269,23 @@ class RoastMPC:
             prev_pressure = U_block[1, b]
             prev_drum = U_block[2, b]
 
-        # Dynamics rollout
+        # ------------------------------------------------------------
+        # Dynamics rollout + running cost
+        # ------------------------------------------------------------
         J = 0
+
         for k in range(self.N):
-            x_next = self._step_symbolic(X[:, k], U[:, k], density=density, moisture=moisture)
+            x_next = self._step_symbolic(X[:, k], U[:, k], density=density, moisture0=moisture0)
             opti.subject_to(X[:, k + 1] == x_next)
 
-            # Small running penalties for control effort
+            # small running penalties for control effort
             J += 0.002 * (U[0, k] - current_control.gas_pct) ** 2
             J += 0.0005 * (U[1, k] - current_control.drum_pressure_pa) ** 2
             J += 0.0005 * (U[2, k] - current_control.drum_speed_pct) ** 2
 
-        # Terminal objective
+        # ------------------------------------------------------------
+        # Terminal objective (structure-based)
+        # ------------------------------------------------------------
         TbN = X[0, -1]
         RoRN = X[1, -1]
         MN = X[3, -1]
@@ -261,24 +294,30 @@ class RoastMPC:
         vLossN = X[7, -1]
         sStructN = X[8, -1]
 
-        pDryN = 1.0 - (MN / 0.12)
+        pDryN = 1.0 - (MN / moisture0)
+        pDryN = ca.fmax(0.0, ca.fmin(1.0, pDryN))
 
-        # Softer weights than before
+        # softer terminal weights
         J += 1.5 * (pDryN - target_structure["dry"]) ** 2
         J += 1.5 * (pMaiN - target_structure["maillard"]) ** 2
         J += 2.0 * (pDevN - target_structure["dev"]) ** 2
         J += 1.2 * (vLossN - target_structure["volatile_loss"]) ** 2
         J += 1.2 * (sStructN - target_structure["structure"]) ** 2
-        J += 0.05 * (RoRN * 60.0 - target_structure["ror_fc"]) ** 2
+        J += 0.05 * ((RoRN * 60.0) - target_structure["ror_fc"]) ** 2
         J += 0.02 * (TbN - target_structure["Tb_end_c"]) ** 2
 
         opti.minimize(J)
 
-        # Strong initial guess = hold current control
+        # ------------------------------------------------------------
+        # Initial guess
+        # ------------------------------------------------------------
         opti.set_initial(U_block[0, :], current_control.gas_pct)
         opti.set_initial(U_block[1, :], current_control.drum_pressure_pa)
         opti.set_initial(U_block[2, :], current_control.drum_speed_pct)
 
+        # ------------------------------------------------------------
+        # Solver config
+        # ------------------------------------------------------------
         opti.solver(
             "ipopt",
             {
@@ -314,7 +353,6 @@ class RoastMPC:
             )
 
         except RuntimeError as exc:
-            # Graceful fallback: hold current control over the horizon
             fallback_controls = [
                 Control(
                     gas_pct=current_control.gas_pct,

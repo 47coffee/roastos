@@ -1,7 +1,15 @@
 from dataclasses import dataclass
 
-"""This module defines core data types used across the RoastOS codebase, including representations of roast state, control inputs, and bean context.
-These types are used for modeling the roasting process and building datasets for machine learning."""
+"""This module defines the core data structures for representing the internal state of the roast, 
+control inputs, and coffee context parameters. The RoastState class encapsulates the key state variables 
+that describe the current conditions of the roast, such as bean temperature, drum energy, moisture content, 
+internal pressure, Maillard and development progress, volatile loss, and structural transformation.
+ The Control class represents the control inputs that can be applied to the roasting process, including 
+ gas percentage, drum pressure, and drum speed. The BeanContext class captures relevant properties o
+ f the coffee beans being roasted, such as density, moisture content, and processing method. 
+ These data structures provide a standardized way to represent and manipulate the state of the roast and 
+ the associated control inputs throughout the dynamics model, state estimation, feature extraction, 
+ and flavor prediction components of the system."""
 
 @dataclass
 class RoastState:
@@ -15,11 +23,12 @@ class RoastState:
     V_loss: float
     S_struct: float
 
+
 @dataclass
 class Control:
-    gas: float
-    airflow: float
-    drum_speed: float
+    gas_pct: float
+    drum_pressure_pa: float
+    drum_speed_pct: float
 
 
 @dataclass

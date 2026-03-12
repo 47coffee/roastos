@@ -9,3 +9,4 @@ pydantic
 pytest
 black
 ruff
+casadi

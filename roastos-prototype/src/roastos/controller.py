@@ -11,12 +11,16 @@ from roastos.objective import flavor_cost
 from roastos.predictor import FlavorPredictor
 from roastos.types import Control, RoastState
 
-"""This module defines the RoastController class, which is responsible for simulating future trajectories of the 
-roasting process under different control sequences, extracting features from those trajectories, 
-building inference rows for flavor prediction, and ultimately evaluating and selecting the best 
-control sequence based on predicted flavor outcomes and associated costs. 
-The controller uses a trained flavor predictor model to make informed decisions about 
-roast adjustments in order to achieve desired flavor profiles."""         
+"""This module defines the RoastController class, which implements a model-based control strategy for the roasting process. 
+The controller simulates future trajectories of the roast under different candidate control sequences,
+ extracts features from the simulated trajectories, builds inference rows for flavor prediction, 
+ and computes a cost based on the predicted flavor compared to a target flavor profile. 
+The choose_best_option method evaluates multiple candidate control sequences and selects the one with the lowest cost,
+    effectively recommending the control adjustments that are expected to yield the desired flavor outcome based 
+    on the internal state of the roast and the coffee context parameters.   The controller relies on the step_dynamics function to 
+    simulate the roast process and a trained FlavorPredictor model to predict flavor attributes from the simulated trajectories.    
+    This class serves as the core decision-making component of the RoastOS system, enabling it to recommend 
+    control actions in real-time during the roasting process."""
 
 @dataclass
 class ControlEvaluation:
@@ -38,6 +42,9 @@ class RoastController:
     - predict flavor with trained models
     - compute cost
     - choose best action sequence
+
+    Air-side control is now expressed as drum pressure (Pa),
+    not airflow percentage.
     """
 
     def __init__(self, model_dir: str | Path):

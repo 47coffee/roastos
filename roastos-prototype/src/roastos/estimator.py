@@ -1,46 +1,79 @@
-import numpy as np
+from __future__ import annotations
 
-"""This module defines the state estimation logic for inferring the internal state of the roast from observed features."""
+from roastos.dynamics import observation_from_state, step_dynamics, _pressure_norm
+from roastos.gateway.schemas import RoastMeasurementFrame
+from roastos.types import Control, RoastState
+
+"""This module defines the RoastStateEstimator class, which implements a lightweight predict-correct observer 
+for estimating the internal state of the roast based on sensor measurements. 
+The estimator uses the step_dynamics function to predict the next state given 
+the current state and control inputs, and then applies a correction based on the 
+residuals between the predicted sensor measurements (bean temperature and environment temperature) 
+and the actual measurements from the RoastMeasurementFrame. The update method adjusts the internal 
+state variables such as bean temperature, rate of rise (RoR), drum energy, and internal pressure using
+simple proportional gains on the residuals. This estimator serves as a bridge toward implementing a full Extended Kalman Filter (EKF) 
+for more sophisticated state estimation in future iterations of the RoastOS system."""
 
 class RoastStateEstimator:
+    """
+    Lightweight predict-correct observer.
+    This is not yet a full EKF, but it is the right bridge toward one.
+    """
 
-    def __init__(self, state_dim, obs_dim):
+    def __init__(
+        self,
+        initial_state: RoastState,
+        *,
+        dt_s: float = 2.0,
+        coffee_context: dict | None = None,
+    ):
+        self.state = initial_state
+        self.dt_s = dt_s
+        self.coffee_context = coffee_context or {"density": 0.78, "moisture": 0.11}
 
-        self.state_dim = state_dim
-        self.obs_dim = obs_dim
+    def predict(self, control: Control) -> RoastState:
+        self.state = step_dynamics(
+            self.state,
+            control,
+            coffee_context=self.coffee_context,
+            dt_s=self.dt_s,
+        )
+        return self.state
 
-        self.x = np.zeros(state_dim)
-        self.P = np.eye(state_dim) * 0.1
+    def update(self, frame: RoastMeasurementFrame, control: Control) -> RoastState:
+        """
+        Correct the predicted state using sensor measurements.
+        """
+        bt_pred, et_pred = observation_from_state(self.state, control)
 
-        self.Q = np.eye(state_dim) * 0.01
-        self.R = np.eye(obs_dim) * 0.5
+        bt_resid = frame.bt_c - bt_pred
+        et_resid = frame.et_c - et_pred
+        ror_resid = (frame.ror_c_per_min / 60.0) - self.state.RoR
 
-    def predict(self, f, u):
+        # Basic correction gains
+        k_bt = 0.55
+        k_ror = 0.35
+        k_et_to_edrum = 0.015
 
-        x_pred = f(self.x, u)
+        Tb = self.state.Tb + k_bt * bt_resid
+        RoR = self.state.RoR + k_ror * ror_resid
 
-        F = np.eye(self.state_dim)   # simplified Jacobian
+        # Use ET residual to nudge drum energy
+        E_drum = self.state.E_drum + k_et_to_edrum * et_resid
 
-        P_pred = F @ self.P @ F.T + self.Q
+        # Slight pressure correction from BT + pressure operating point
+        pnorm = _pressure_norm(frame.drum_pressure_pa)
+        P_int = self.state.P_int + 0.01 * bt_resid - 0.003 * pnorm
 
-        self.x = x_pred
-        self.P = P_pred
-
-    def update(self, z, h):
-
-        z_pred = h(self.x)
-
-        H = np.zeros((self.obs_dim, self.state_dim))
-
-        H[0,0] = 1
-        H[1,0] = 0.5
-
-        y = z - z_pred
-
-        S = H @ self.P @ H.T + self.R
-        K = self.P @ H.T @ np.linalg.inv(S)
-
-        self.x = self.x + K @ y
-
-        I = np.eye(self.state_dim)
-        self.P = (I - K @ H) @ self.P
+        self.state = RoastState(
+            Tb=Tb,
+            RoR=RoR,
+            E_drum=max(0.0, min(1.6, E_drum)),
+            M=self.state.M,
+            P_int=max(0.0, min(2.0, P_int)),
+            p_mai=self.state.p_mai,
+            p_dev=self.state.p_dev,
+            V_loss=self.state.V_loss,
+            S_struct=self.state.S_struct,
+        )
+        return self.state

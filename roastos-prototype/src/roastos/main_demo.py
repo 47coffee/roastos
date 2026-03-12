@@ -2,33 +2,48 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from roastos import state
 from roastos.controller import RoastController
 from roastos.plotting import plot_candidate_trajectories
 from roastos.state import initial_state
 from roastos.types import Control
 
+"""This module defines the main demonstration loop for the RoastOS system using a dummy gateway that simulates a Dutch Masters roasting machine.
+The main function simulates a live roasting session by defining an initial roast state, a target flavor 
+profile, session context, coffee context, and a set of candidate control sequences. It then initializes 
+the RoastController with a trained model directory, evaluates the candidate control sequences to determine 
+the best option, and prints out the evaluations and the recommended control adjustments along with the predicted 
+flavor attributes. Finally, it plots the simulated trajectories for each candidate control sequence and saves 
+the plot to a specified path. This serves as a demonstration of how the various components of 
+the RoastOS system interact in a live control scenario, allowing for testing and validation of 
+the controller's decision-making logic before integrating with a real roasting machine API."""
 
 def build_candidate_control_sequences() -> list[list[Control]]:
     """
-    Create a more separated set of candidate future control plans
-    so the simulated trajectories diverge more clearly.
+    Create a more separated set of candidate future control plans.
+
+    Control vector is now:
+    - gas_pct
+    - drum_pressure_pa
+    - drum_speed_pct
+
+    Higher pressure -> stronger draft / more air-side heat removal.
+    Lower pressure -> softer draft / more heat retention.
     """
     return [
-        # Option 1: stronger energy
-        [Control(80, 55, 65)] * 10,
+        # Option 1: strong heat retention / stronger gas / lower pressure
+        [Control(gas_pct=80, drum_pressure_pa=70, drum_speed_pct=65)] * 10,
 
-        # Option 2: moderate energy
-        [Control(75, 60, 65)] * 10,
+        # Option 2: moderate strong roast
+        [Control(gas_pct=75, drum_pressure_pa=80, drum_speed_pct=65)] * 10,
 
-        # Option 3: balanced filter move
-        [Control(70, 65, 65)] * 10,
+        # Option 3: balanced filter-style move
+        [Control(gas_pct=70, drum_pressure_pa=90, drum_speed_pct=65)] * 10,
 
-        # Option 4: cleaner / higher airflow
-        [Control(65, 72, 65)] * 10,
+        # Option 4: cleaner roast / more draft
+        [Control(gas_pct=65, drum_pressure_pa=105, drum_speed_pct=65)] * 10,
 
-        # Option 5: aggressive cleanup
-        [Control(60, 80, 65)] * 10,
+        # Option 5: aggressive cleanup / high draft
+        [Control(gas_pct=60, drum_pressure_pa=120, drum_speed_pct=65)] * 10,
     ]
 
 
@@ -41,11 +56,11 @@ def pretty_print_option(idx: int, evaluation) -> None:
         return rf.get(key, default)
 
     print(f"\nOption {idx}")
-    print("-" * 60)
+    print("-" * 72)
     print(
-        f"First control -> gas={first_control.gas:.1f}%, "
-        f"airflow={first_control.airflow:.1f}%, "
-        f"drum={first_control.drum_speed:.1f}%"
+        f"First control -> gas={first_control.gas_pct:.1f}%, "
+        f"pressure={first_control.drum_pressure_pa:.1f} Pa, "
+        f"drum={first_control.drum_speed_pct:.1f}%"
     )
     print(f"Cost: {evaluation.cost:.4f}")
 
@@ -79,8 +94,8 @@ def pretty_print_option(idx: int, evaluation) -> None:
 
 
 def main() -> None:
-    print("\nRoastOS v1 Demo")
-    print("=" * 60)
+    print("\nRoastOS v1 Demo — Pressure-Based Control")
+    print("=" * 72)
 
     project_root = Path(__file__).resolve().parents[2]
 
@@ -114,6 +129,9 @@ def main() -> None:
 
     # ------------------------------------------------------------------
     # 3. Session context
+    # IMPORTANT:
+    # These categorical values must match training-time categories
+    # used in the model artifacts.
     # ------------------------------------------------------------------
     session_context = {
         "machine_id": "PROBAT-P12",
@@ -171,7 +189,7 @@ def main() -> None:
     # 7. Print evaluations
     # ------------------------------------------------------------------
     print("\nCandidate evaluations:")
-    print("=" * 60)
+    print("=" * 72)
 
     for idx, evaluation in enumerate(evaluations, start=1):
         pretty_print_option(idx, evaluation)
@@ -182,12 +200,12 @@ def main() -> None:
     best_control = best.control_sequence[0]
 
     print("\nBest option selected")
-    print("=" * 60)
+    print("=" * 72)
     print(
         f"Recommended next control -> "
-        f"gas={best_control.gas:.1f}%, "
-        f"airflow={best_control.airflow:.1f}%, "
-        f"drum={best_control.drum_speed:.1f}%"
+        f"gas={best_control.gas_pct:.1f}%, "
+        f"pressure={best_control.drum_pressure_pa:.1f} Pa, "
+        f"drum={best_control.drum_speed_pct:.1f}%"
     )
     print(f"Expected cost: {best.cost:.4f}")
 
@@ -205,7 +223,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 9. Plot trajectories
     # ------------------------------------------------------------------
-    plot_path = project_root / "artifacts" / "candidate_trajectories.png"
+    plot_path = project_root / "artifacts" / "candidate_trajectories_pressure.png"
     plot_candidate_trajectories(
         evaluations,
         dt_s=2.0,

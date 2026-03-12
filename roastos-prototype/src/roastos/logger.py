@@ -60,7 +60,16 @@ class RoastRuntimeLogger:
                         "mpc_success",
                         "mpc_objective",
                         "mpc_status",
-                        "message",
+                        "alert_ror_high",
+                        "alert_ror_low",
+                        "alert_temp_high",
+                        "alert_pressure_high",
+                        "alert_bitterness_risk",
+                        "alert_clarity_risk",
+                        "alert_mpc_fallback",
+                        "alerts_text",
+                        "live_message",
+                        "detailed_message",
                     ]
                 )
 
@@ -76,6 +85,7 @@ class RoastRuntimeLogger:
         mpc_success: bool,
         mpc_objective: float,
         mpc_status: str,
+        alerts,
     ) -> None:
         self._ensure_header()
 
@@ -113,6 +123,15 @@ class RoastRuntimeLogger:
                     int(mpc_success),
                     mpc_objective,
                     mpc_status,
+                    int(alerts.alert_ror_high),
+                    int(alerts.alert_ror_low),
+                    int(alerts.alert_temp_high),
+                    int(alerts.alert_pressure_high),
+                    int(alerts.alert_bitterness_risk),
+                    int(alerts.alert_clarity_risk),
+                    int(alerts.alert_mpc_fallback),
+                    "; ".join(alerts.active_labels()),
                     recommendation.message,
+                    recommendation.detailed_message,
                 ]
             )

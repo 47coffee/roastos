@@ -25,7 +25,13 @@ class RoastRecommendation(BaseModel):
     recommended_gas_pct: float = Field(ge=0, le=100)
     recommended_drum_pressure_pa: float = Field(ge=0)
     recommended_drum_speed_pct: float = Field(ge=0, le=100)
+
+    # Short live operator message
     message: str
+
+    # Longer post-roast explanation for logs/review
+    detailed_message: Optional[str] = None
+
     predicted_clarity: Optional[float] = None
     predicted_sweetness: Optional[float] = None
     predicted_body: Optional[float] = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from roastos.advisor import AdvisorContext, build_recommendation
+from roastos.alerts import compute_alerts
 from roastos.controller import RoastController
 from roastos.estimator import RoastStateEstimator
 from roastos.gateway.dummy_dutchmaster import DummyDutchMasterGateway
@@ -11,15 +12,6 @@ from roastos.mpc import RoastMPC
 from roastos.state import initial_state
 from roastos.types import Control
 
-"""This module defines the main demonstration loop for the RoastOS system using a dummy gateway that simulates a Dutch Masters roasting machine.
-The main function simulates a live roasting session by defining an initial roast state, a target flavor 
-profile, session context, coffee context, and a set of candidate control sequences. It then initializes 
-the RoastController with a trained model directory, evaluates the candidate control sequences to determine 
-the best option, and prints out the evaluations and the recommended control adjustments along with the predicted 
-flavor attributes. Finally, it plots the simulated trajectories for each candidate control sequence and saves 
-the plot to a specified path. This serves as a demonstration of how the various components of 
-the RoastOS system interact in a live control scenario, allowing for testing and validation of 
-the controller's decision-making logic before integrating with a real roasting machine API."""
 
 def build_target_structure(style_profile: str) -> dict:
     """
@@ -170,7 +162,16 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         )
 
         # ------------------------------------------------------------
-        # 6. Print live status
+        # 6. Compute alerts
+        # ------------------------------------------------------------
+        alerts = compute_alerts(
+            estimated_state=estimated_state,
+            recommendation=recommendation,
+            mpc_result=mpc_result,
+        )
+
+        # ------------------------------------------------------------
+        # 7. Print live status
         # ------------------------------------------------------------
         print(f"\nTime {frame.timestamp_s:6.1f}s | Machine state: {frame.machine_state}")
         print(
@@ -190,11 +191,16 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         else:
             print(f"MPC fallback used | status={mpc_result.status}")
 
+        active_alerts = alerts.active_labels()
+        if active_alerts:
+            print("Alerts:")
+            print(f"  {', '.join(active_alerts)}")
+
         print("Recommendation:")
         print(f"  {recommendation.message}")
 
         # ------------------------------------------------------------
-        # 7. Log step
+        # 8. Log step
         # ------------------------------------------------------------
         logger.log_step(
             frame=frame,
@@ -204,10 +210,11 @@ def run_dummy_live_loop(steps: int = 20) -> None:
             mpc_success=mpc_result.success,
             mpc_objective=mpc_result.objective_value,
             mpc_status=mpc_result.status,
+            alerts=alerts,
         )
 
         # ------------------------------------------------------------
-        # 8. Simulate operator following recommendation
+        # 9. Simulate operator following recommendation
         # ------------------------------------------------------------
         current_control = recommended_control
         gateway.apply_control(current_control)

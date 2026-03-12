@@ -11,17 +11,17 @@ from roastos.objective import flavor_cost
 from roastos.predictor import FlavorPredictor
 from roastos.types import Control, RoastState
 
-"""This module defines the RoastController class, which serves as the core decision-making component of the RoastOS system. 
-The controller is responsible for simulating future control sequences,
- extracting roast features from the simulated trajectories, building ML-ready inference rows, 
- predicting flavor outcomes using the trained FlavorPredictor, and computing the cost of each control 
- sequence based on the predicted flavor profile compared to a target flavor profile. The controller can 
- evaluate multiple candidate control sequences and choose the one with the lowest cost, effectively 
- guiding the roast towards the desired flavor outcome based on the current state and context information."""
+"""This module defines the RoastController class, which is responsible for simulating future trajectories of the 
+roasting process under different control sequences, extracting features from those trajectories, 
+building inference rows for flavor prediction, and ultimately evaluating and selecting the best 
+control sequence based on predicted flavor outcomes and associated costs. 
+The controller uses a trained flavor predictor model to make informed decisions about 
+roast adjustments in order to achieve desired flavor profiles."""         
 
 @dataclass
 class ControlEvaluation:
     control_sequence: list[Control]
+    trajectory_states: list[RoastState]
     final_state: RoastState
     roast_features: dict[str, Any]
     inference_row: dict[str, Any]
@@ -47,12 +47,17 @@ class RoastController:
         self,
         initial_state: RoastState,
         control_sequence: list[Control],
+        coffee_context: dict[str, Any] | None = None,
     ) -> list[RoastState]:
         states = [initial_state]
         current_state = initial_state
 
         for control in control_sequence:
-            current_state = step_dynamics(current_state, control)
+            current_state = step_dynamics(
+                current_state,
+                control,
+                coffee_context=coffee_context,
+            )
             states.append(current_state)
 
         return states
@@ -69,6 +74,7 @@ class RoastController:
         states = self.simulate_trajectory(
             initial_state=initial_state,
             control_sequence=control_sequence,
+            coffee_context=coffee_context,
         )
 
         roast_features = extract_features(states)
@@ -85,6 +91,7 @@ class RoastController:
 
         return ControlEvaluation(
             control_sequence=control_sequence,
+            trajectory_states=states,
             final_state=states[-1],
             roast_features=roast_features,
             inference_row=inference_row,

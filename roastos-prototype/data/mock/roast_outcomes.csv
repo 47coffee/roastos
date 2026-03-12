@@ -1,1 +1,6 @@
 roast_id,rest_days,brew_method,clarity,sweetness,body,bitterness,acidity,aroma,overall_score,panel_size,notes
+RW-2026-001,7,filter,0.91,0.76,0.32,0.12,0.74,0.82,0.84,3,clean and transparent
+RW-2026-002,7,filter,0.88,0.73,0.35,0.15,0.70,0.79,0.81,3,slightly sweeter but less bright
+RW-2026-003,7,espresso,0.55,0.70,0.78,0.50,0.42,0.68,0.72,3,heavy espresso profile
+RW-2026-004,7,filter,0.93,0.78,0.30,0.11,0.76,0.84,0.86,3,very clean floral cup
+RW-2026-005,7,espresso,0.60,0.71,0.80,0.55,0.40,0.66,0.71,3,thick and bittersweet

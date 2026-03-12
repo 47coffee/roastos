@@ -1,1 +1,6 @@
 roast_id,timestamp_start,machine_id,coffee_id,operator_id,batch_size_kg,style_profile,intent_clarity,intent_sweetness,intent_body,intent_bitterness,charge_temp_c,drop_temp_c,duration_s,ambient_temp_c,ambient_rh_pct,notes
+RW-2026-001,2026-03-01T10:00:00,PROBAT-P12,RW-SH1,SIMONE,6.0,filter_clarity,0.90,0.75,0.35,0.15,205.0,205.0,570,21.0,48.0,clean filter target
+RW-2026-002,2026-03-02T10:00:00,PROBAT-P12,RW-SH1,SIMONE,6.0,filter_clarity,0.90,0.75,0.35,0.15,205.0,206.0,575,21.0,48.0,slightly more energy
+RW-2026-003,2026-03-03T10:00:00,PROBAT-P12,RW-SH1,SIMONE,6.0,espresso_body,0.55,0.70,0.78,0.50,206.0,208.0,600,21.0,48.0,espresso target
+RW-2026-004,2026-03-04T10:00:00,PROBAT-P12,RW-SH1,SIMONE,6.0,filter_clarity,0.92,0.78,0.30,0.11,205.0,204.0,560,21.0,48.0,very clean roast
+RW-2026-005,2026-03-05T10:00:00,PROBAT-P12,RW-SH1,SIMONE,6.0,espresso_body,0.60,0.71,0.80,0.55,205.0,207.0,590,21.0,48.0,heavier espresso roast

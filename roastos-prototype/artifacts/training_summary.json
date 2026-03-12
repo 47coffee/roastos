@@ -1,0 +1,282 @@
+{
+  "clarity": {
+    "model_path": "artifacts\\models\\clarity_model.joblib",
+    "metrics": {
+      "mae": 0.020629999999999548,
+      "rmse": 0.023534474712641383,
+      "r2": 0.9794130426702365
+    },
+    "top_features": [
+      {
+        "feature": "intent_sweetness",
+        "importance": 0.11909843170692895
+      },
+      {
+        "feature": "brew_method_filter",
+        "importance": 0.07902081724798089
+      },
+      {
+        "feature": "duration_s",
+        "importance": 0.059589349611227985
+      },
+      {
+        "feature": "style_profile_filter_clarity",
+        "importance": 0.05913348344016544
+      },
+      {
+        "feature": "crash_index",
+        "importance": 0.0566779351995623
+      },
+      {
+        "feature": "time_to_yellow_s",
+        "importance": 0.05493154982410655
+      },
+      {
+        "feature": "v_loss_final",
+        "importance": 0.050552422926724926
+      },
+      {
+        "feature": "brew_method_espresso",
+        "importance": 0.04909398557361218
+      },
+      {
+        "feature": "delta_bt_fc_to_drop_c",
+        "importance": 0.04687192194478544
+      },
+      {
+        "feature": "time_to_fc_s",
+        "importance": 0.04609689813555587
+      },
+      {
+        "feature": "pct_maillard",
+        "importance": 0.04492778023820479
+      },
+      {
+        "feature": "pct_dry",
+        "importance": 0.04472226200487805
+      },
+      {
+        "feature": "ror_fc",
+        "importance": 0.03932889492748442
+      },
+      {
+        "feature": "intent_clarity",
+        "importance": 0.03570175738773525
+      },
+      {
+        "feature": "s_struct_final",
+        "importance": 0.03413791697046245
+      }
+    ]
+  },
+  "sweetness": {
+    "model_path": "artifacts\\models\\sweetness_model.joblib",
+    "metrics": {
+      "mae": 0.00569999999999955,
+      "rmse": 0.007024599632718997,
+      "r2": 0.9454148230088543
+    },
+    "top_features": [
+      {
+        "feature": "crash_index",
+        "importance": 0.12172317698546181
+      },
+      {
+        "feature": "time_to_yellow_s",
+        "importance": 0.08123150039859445
+      },
+      {
+        "feature": "ror_fc",
+        "importance": 0.0779460420314217
+      },
+      {
+        "feature": "intent_sweetness",
+        "importance": 0.07245238375702459
+      },
+      {
+        "feature": "time_to_fc_s",
+        "importance": 0.07189128898640336
+      },
+      {
+        "feature": "delta_bt_fc_to_drop_c",
+        "importance": 0.0712679349506556
+      },
+      {
+        "feature": "v_loss_final",
+        "importance": 0.05263959885935039
+      },
+      {
+        "feature": "duration_s",
+        "importance": 0.0515588236013671
+      },
+      {
+        "feature": "pct_maillard",
+        "importance": 0.04932006749469481
+      },
+      {
+        "feature": "pct_dry",
+        "importance": 0.03608821678880175
+      },
+      {
+        "feature": "drop_temp_c",
+        "importance": 0.03413594665471201
+      },
+      {
+        "feature": "dev_time_s",
+        "importance": 0.032083457744786985
+      },
+      {
+        "feature": "timestamp_start",
+        "importance": 0.03081739680670852
+      },
+      {
+        "feature": "s_struct_final",
+        "importance": 0.030212453810872023
+      },
+      {
+        "feature": "intent_body",
+        "importance": 0.0301528102885533
+      }
+    ]
+  },
+  "body": {
+    "model_path": "artifacts\\models\\body_model.joblib",
+    "metrics": {
+      "mae": 0.02818999999999979,
+      "rmse": 0.03115987002540274,
+      "r2": 0.9815270643074583
+    },
+    "top_features": [
+      {
+        "feature": "brew_method_filter",
+        "importance": 0.09454881892991945
+      },
+      {
+        "feature": "intent_sweetness",
+        "importance": 0.07994237027347444
+      },
+      {
+        "feature": "style_profile_filter_clarity",
+        "importance": 0.07964752931118474
+      },
+      {
+        "feature": "duration_s",
+        "importance": 0.07811186391399191
+      },
+      {
+        "feature": "ror_fc",
+        "importance": 0.06274920256054974
+      },
+      {
+        "feature": "pct_dry",
+        "importance": 0.060600641364757644
+      },
+      {
+        "feature": "time_to_yellow_s",
+        "importance": 0.05939849758808525
+      },
+      {
+        "feature": "pct_maillard",
+        "importance": 0.049975149202982884
+      },
+      {
+        "feature": "delta_bt_fc_to_drop_c",
+        "importance": 0.046954920427003485
+      },
+      {
+        "feature": "v_loss_final",
+        "importance": 0.04581836354543104
+      },
+      {
+        "feature": "brew_method_espresso",
+        "importance": 0.04475875834788288
+      },
+      {
+        "feature": "time_to_fc_s",
+        "importance": 0.03638615302504956
+      },
+      {
+        "feature": "style_profile_espresso_body",
+        "importance": 0.03485552454002662
+      },
+      {
+        "feature": "dev_time_s",
+        "importance": 0.034823404888580406
+      },
+      {
+        "feature": "drop_temp_c",
+        "importance": 0.03028770505432904
+      }
+    ]
+  },
+  "bitterness": {
+    "model_path": "artifacts\\models\\bitterness_model.joblib",
+    "metrics": {
+      "mae": 0.023640000000000196,
+      "rmse": 0.028033533491160643,
+      "r2": 0.9795896789943895
+    },
+    "top_features": [
+      {
+        "feature": "style_profile_filter_clarity",
+        "importance": 0.07934246484588833
+      },
+      {
+        "feature": "intent_sweetness",
+        "importance": 0.074845552355519
+      },
+      {
+        "feature": "brew_method_filter",
+        "importance": 0.06443630057109355
+      },
+      {
+        "feature": "ror_fc",
+        "importance": 0.06443332795507735
+      },
+      {
+        "feature": "delta_bt_fc_to_drop_c",
+        "importance": 0.06044454528227428
+      },
+      {
+        "feature": "duration_s",
+        "importance": 0.05965348956522546
+      },
+      {
+        "feature": "v_loss_final",
+        "importance": 0.05032308928687592
+      },
+      {
+        "feature": "drop_temp_c",
+        "importance": 0.05026701723351201
+      },
+      {
+        "feature": "pct_dry",
+        "importance": 0.05020522930783002
+      },
+      {
+        "feature": "pct_maillard",
+        "importance": 0.04988520021718486
+      },
+      {
+        "feature": "intent_body",
+        "importance": 0.04521149621544044
+      },
+      {
+        "feature": "crash_index",
+        "importance": 0.04379925863400867
+      },
+      {
+        "feature": "time_to_yellow_s",
+        "importance": 0.04013677575457674
+      },
+      {
+        "feature": "brew_method_espresso",
+        "importance": 0.03961622270570564
+      },
+      {
+        "feature": "intent_bitterness",
+        "importance": 0.03535288857398646
+      }
+    ]
+  }
+}

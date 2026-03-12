@@ -11,8 +11,10 @@ from roastos.types import RoastState
 def _extract_series(states: list[RoastState]) -> dict[str, list[float]]:
     return {
         "Tb": [s.Tb for s in states],
+        "RoR": [s.RoR * 60.0 for s in states],  # convert degC/s proxy -> degC/min
         "E_drum": [s.E_drum for s in states],
-        "p_dry": [s.p_dry for s in states],
+        "M": [s.M for s in states],
+        "P_int": [s.P_int for s in states],
         "p_mai": [s.p_mai for s in states],
         "p_dev": [s.p_dev for s in states],
         "V_loss": [s.V_loss for s in states],
@@ -34,13 +36,15 @@ def plot_candidate_trajectories(
     - trajectory_states: list[RoastState]
     - cost: float
     """
-    fig, axes = plt.subplots(4, 2, figsize=(14, 14))
+    fig, axes = plt.subplots(5, 2, figsize=(14, 16))
     axes = axes.flatten()
 
     metric_order = [
         "Tb",
+        "RoR",
         "E_drum",
-        "p_dry",
+        "M",
+        "P_int",
         "p_mai",
         "p_dev",
         "V_loss",
@@ -49,8 +53,10 @@ def plot_candidate_trajectories(
 
     metric_titles = {
         "Tb": "Bean Temperature",
+        "RoR": "Rate of Rise",
         "E_drum": "Drum Energy",
-        "p_dry": "Drying Progress",
+        "M": "Moisture Proxy",
+        "P_int": "Internal Pressure Proxy",
         "p_mai": "Maillard Progress",
         "p_dev": "Development Progress",
         "V_loss": "Volatile Loss",
@@ -59,8 +65,10 @@ def plot_candidate_trajectories(
 
     metric_ylabels = {
         "Tb": "°C",
+        "RoR": "°C/min",
         "E_drum": "norm",
-        "p_dry": "0-1",
+        "M": "norm",
+        "P_int": "norm",
         "p_mai": "0-1",
         "p_dev": "0-1",
         "V_loss": "index",
@@ -83,9 +91,9 @@ def plot_candidate_trajectories(
         axes[ax_idx].grid(True, alpha=0.3)
         axes[ax_idx].legend(fontsize=8)
 
-    # Hide unused subplot
-    if len(axes) > len(metric_order):
-        axes[-1].axis("off")
+    # Hide any unused subplot(s)
+    for ax_idx in range(len(metric_order), len(axes)):
+        axes[ax_idx].axis("off")
 
     fig.suptitle("RoastOS Candidate Future Trajectories", fontsize=16)
     fig.tight_layout(rect=[0, 0, 1, 0.97])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from roastos import state
 from roastos.controller import RoastController
 from roastos.plotting import plot_candidate_trajectories
 from roastos.state import initial_state
@@ -90,8 +91,9 @@ def main() -> None:
 
     print("\nInitial roast state:")
     print(
-        f"  Tb={state.Tb:.2f}, E_drum={state.E_drum:.3f}, "
-        f"p_dry={state.p_dry:.3f}, p_mai={state.p_mai:.3f}, "
+        f"  Tb={state.Tb:.2f}, RoR={state.RoR:.3f}, "
+        f"E_drum={state.E_drum:.3f}, M={state.M:.3f}, "
+        f"P_int={state.P_int:.3f}, p_mai={state.p_mai:.3f}, "
         f"p_dev={state.p_dev:.3f}, V_loss={state.V_loss:.3f}, "
         f"S_struct={state.S_struct:.3f}"
     )

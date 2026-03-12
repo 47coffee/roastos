@@ -11,8 +11,10 @@ This function can be used to initialize the roast state at the beginning of a ro
 def initial_state() -> RoastState:
     return RoastState(
         Tb=180.0,
+        RoR=0.90,      # degC/s proxy
         E_drum=0.72,
-        p_dry=0.95,
+        M=0.12,        # normalized moisture proxy
+        P_int=0.05,    # internal pressure proxy
         p_mai=0.78,
         p_dev=0.00,
         V_loss=0.05,

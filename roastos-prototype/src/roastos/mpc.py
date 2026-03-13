@@ -205,7 +205,7 @@ class RoastMPC:
             0.0,
             ca.fmin(
                 1.0,
-                p_dev + 0.0008 * ca.fmax(0.0, Tb_next - 190.0) * self.dt_s
+                p_dev + 0.00045 * ca.fmax(0.0, Tb_next - 190.0) * self.dt_s
             )
         )
 
@@ -217,7 +217,7 @@ class RoastMPC:
             0.0,
             ca.fmin(
                 1.0,
-                V_loss + 0.0012 * ca.fmax(0.0, Tb_next - 180.0) * self.dt_s
+                V_loss + 0.00045 * ca.fmax(0.0, Tb_next - 185.0) * self.dt_s
             )
         )
 

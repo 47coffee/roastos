@@ -99,6 +99,7 @@ def run_dummy_live_loop(steps: int = 20, dt_s: float = 2.0) -> None:
         "sweetness": 0.75,
         "body": 0.35,
         "bitterness": 0.15,
+        "acidity_quality": 0.65,
     }
     target_structure = build_target_structure(session_context["style_profile"])
 
@@ -226,6 +227,16 @@ def run_dummy_live_loop(steps: int = 20, dt_s: float = 2.0) -> None:
 
         print("Recommendation:")
         print(f"  {recommendation.message}")
+
+        print("Predicted flavor:")
+        for k, v in best_eval.predicted_flavor.items():
+            print(f"  {k}: {v:.3f}")
+
+        print("Predicted structure:")
+        for k, v in best_eval.structure_summary.items():
+            print(f"  {k}: {v:.3f}")
+
+        print(f"Flavor cost: {best_eval.flavor_cost:.4f}")
 
         # ------------------------------------------------------------
         # 9. Log step

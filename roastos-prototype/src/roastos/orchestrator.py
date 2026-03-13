@@ -6,6 +6,7 @@ from roastos.advisor import AdvisorContext, build_recommendation
 from roastos.alerts import compute_alerts
 from roastos.controller import RoastController
 from roastos.estimator import RoastStateEstimator
+from roastos.filter import RoRFilter
 from roastos.gateway.dummy_dutchmaster import DummyDutchMasterGateway
 from roastos.logger import RoastRuntimeLogger
 from roastos.mpc import RoastMPC
@@ -40,7 +41,7 @@ def build_target_structure(style_profile: str) -> dict:
     }
 
 
-def run_dummy_live_loop(steps: int = 20) -> None:
+def run_dummy_live_loop(steps: int = 20, dt_s: float = 2.0) -> None:
     project_root = Path(__file__).resolve().parents[2]
 
     coffee_context = {
@@ -73,32 +74,25 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         "timestamp_start": "2026-03-01T10:00:00",
     }
 
-    gateway = DummyDutchMasterGateway(
-        dt_s=2.0,
-        coffee_context=coffee_context,
-        initial_control=Control(
-            gas_pct=75.0,
-            drum_pressure_pa=90.0,
-            drum_speed_pct=65.0,
-        ),
-    )
-    gateway.connect()
-
-    estimator = RoastStateEstimator(
-        initial_state=initial_state(),
-        dt_s=2.0,
-        coffee_context=coffee_context,
-    )
-
-    mpc = RoastMPC(horizon_steps=20, dt_s=2.0, n_blocks=4)
-    controller = RoastController(model_dir=project_root / "artifacts" / "models")
-    logger = RoastRuntimeLogger(project_root / "artifacts" / "runtime_log.csv")
-
     current_control = Control(
         gas_pct=75.0,
         drum_pressure_pa=90.0,
         drum_speed_pct=65.0,
     )
+
+    gateway = DummyDutchMasterGateway(
+        dt_s=dt_s,
+        coffee_context=coffee_context,
+        initial_control=current_control,
+    )
+    gateway.connect()
+
+    estimator = RoastStateEstimator(initial_state=initial_state())
+    ror_filter = RoRFilter(alpha=0.25)
+
+    mpc = RoastMPC(horizon_steps=12, dt_s=dt_s, n_blocks=2)
+    controller = RoastController(model_dir=project_root / "artifacts" / "models")
+    logger = RoastRuntimeLogger(project_root / "artifacts" / "runtime_log.csv")
 
     target_flavor = {
         "clarity": 0.90,
@@ -106,27 +100,44 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         "body": 0.35,
         "bitterness": 0.15,
     }
-
     target_structure = build_target_structure(session_context["style_profile"])
 
     print("\nRoastOS Dummy Dutch Master Live Loop")
     print("=" * 72)
 
-    for step_idx in range(steps):
+    for _step_idx in range(steps):
         # ------------------------------------------------------------
         # 1. Read machine frame
         # ------------------------------------------------------------
         frame = gateway.read_frame()
 
         # ------------------------------------------------------------
-        # 2. Predict + update estimator
+        # 2. Filter measured RoR for display / future use
         # ------------------------------------------------------------
-        estimator.predict(current_control)
-        estimated_state = estimator.update(frame, current_control)
+        filtered_ror_c_per_min = ror_filter.update(frame.ror_c_per_min)
 
         # ------------------------------------------------------------
-        # 3. Solve MPC
+        # 3. EKF predict + update
         # ------------------------------------------------------------
+        estimator.predict(
+            control=current_control,
+            coffee_context=coffee_context,
+            dt_s=dt_s,
+        )
+        estimated_state = estimator.update(
+            bt_meas=frame.bt_c,
+            et_meas=frame.et_c,
+            control=current_control,
+        )
+
+        # Optional: lightly blend measured filtered RoR into estimated RoR
+        # without overriding the EKF completely.
+        estimated_state.RoR = 0.8 * estimated_state.RoR + 0.2 * (filtered_ror_c_per_min / 60.0)
+
+        # ------------------------------------------------------------
+        # 4. Solve MPC on estimated state
+        # ------------------------------------------------------------
+        
         mpc_result = mpc.optimize(
             x0=estimated_state,
             current_control=current_control,
@@ -134,10 +145,23 @@ def run_dummy_live_loop(steps: int = 20) -> None:
             coffee_context=coffee_context,
         )
 
-        recommended_control = mpc_result.controls[0]
+        raw_control = mpc_result.controls[0]
 
         # ------------------------------------------------------------
-        # 4. Forecast flavor of recommended sequence
+        # Actuator saturation (prevents floating point overflow)
+        # ------------------------------------------------------------
+        gas = max(0.0, min(100.0, raw_control.gas_pct))
+        pressure = max(50.0, min(120.0, raw_control.drum_pressure_pa))
+        drum = max(55.0, min(75.0, raw_control.drum_speed_pct))
+
+        recommended_control = Control(
+            gas_pct=gas,
+            drum_pressure_pa=pressure,
+            drum_speed_pct=drum,
+        )
+
+        # ------------------------------------------------------------
+        # 5. Forecast flavor for the recommended horizon
         # ------------------------------------------------------------
         best_eval, _ = controller.choose_best_option(
             initial_state=estimated_state,
@@ -148,7 +172,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         )
 
         # ------------------------------------------------------------
-        # 5. Build human-readable recommendation
+        # 6. Build operator recommendation
         # ------------------------------------------------------------
         recommendation = build_recommendation(
             AdvisorContext(
@@ -162,7 +186,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         )
 
         # ------------------------------------------------------------
-        # 6. Compute alerts
+        # 7. Compute alerts
         # ------------------------------------------------------------
         alerts = compute_alerts(
             estimated_state=estimated_state,
@@ -171,7 +195,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         )
 
         # ------------------------------------------------------------
-        # 7. Print live status
+        # 8. Print live status
         # ------------------------------------------------------------
         print(f"\nTime {frame.timestamp_s:6.1f}s | Machine state: {frame.machine_state}")
         print(
@@ -180,9 +204,13 @@ def run_dummy_live_loop(steps: int = 20) -> None:
             f"Gas={frame.gas_pct:5.1f}%, Pressure={frame.drum_pressure_pa:6.1f} Pa"
         )
         print(
+            f"Filtered -> RoR={filtered_ror_c_per_min:6.2f}°C/min"
+        )
+        print(
             f"Estimated -> Tb={estimated_state.Tb:6.2f}, "
-            f"RoR={estimated_state.RoR*60.0:6.2f}°C/min, "
-            f"M={estimated_state.M:5.3f}, P_int={estimated_state.P_int:5.3f}, "
+            f"RoR={estimated_state.RoR * 60.0:6.2f}°C/min, "
+            f"E_drum={estimated_state.E_drum:5.3f}, M={estimated_state.M:5.3f}, "
+            f"P_int={estimated_state.P_int:5.3f}, "
             f"Mai={estimated_state.p_mai:5.3f}, Dev={estimated_state.p_dev:5.3f}"
         )
 
@@ -200,7 +228,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         print(f"  {recommendation.message}")
 
         # ------------------------------------------------------------
-        # 8. Log step
+        # 9. Log step
         # ------------------------------------------------------------
         logger.log_step(
             frame=frame,
@@ -214,7 +242,7 @@ def run_dummy_live_loop(steps: int = 20) -> None:
         )
 
         # ------------------------------------------------------------
-        # 9. Simulate operator following recommendation
+        # 10. Simulate operator applying recommendation
         # ------------------------------------------------------------
         current_control = recommended_control
         gateway.apply_control(current_control)

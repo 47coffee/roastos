@@ -22,6 +22,7 @@ class RoastState:
     p_dev: float
     V_loss: float
     S_struct: float
+    Q_bias: float = 0.0
 
 
 @dataclass

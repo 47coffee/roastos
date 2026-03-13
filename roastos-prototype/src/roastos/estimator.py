@@ -1,79 +1,91 @@
 from __future__ import annotations
 
-from roastos.dynamics import observation_from_state, step_dynamics, _pressure_norm
-from roastos.gateway.schemas import RoastMeasurementFrame
-from roastos.types import Control, RoastState
+import numpy as np
 
-"""This module defines the RoastStateEstimator class, which implements a lightweight predict-correct observer 
-for estimating the internal state of the roast based on sensor measurements. 
-The estimator uses the step_dynamics function to predict the next state given 
-the current state and control inputs, and then applies a correction based on the 
-residuals between the predicted sensor measurements (bean temperature and environment temperature) 
-and the actual measurements from the RoastMeasurementFrame. The update method adjusts the internal 
-state variables such as bean temperature, rate of rise (RoR), drum energy, and internal pressure using
-simple proportional gains on the residuals. This estimator serves as a bridge toward implementing a full Extended Kalman Filter (EKF) 
-for more sophisticated state estimation in future iterations of the RoastOS system."""
+from roastos.types import RoastState, Control
+from roastos.dynamics import step_dynamics, observation_from_state
+
 
 class RoastStateEstimator:
     """
-    Lightweight predict-correct observer.
-    This is not yet a full EKF, but it is the right bridge toward one.
+    Lightweight EKF-style state estimator for RoastOS.
     """
 
-    def __init__(
-        self,
-        initial_state: RoastState,
-        *,
-        dt_s: float = 2.0,
-        coffee_context: dict | None = None,
-    ):
+    def __init__(self, initial_state: RoastState):
         self.state = initial_state
-        self.dt_s = dt_s
-        self.coffee_context = coffee_context or {"density": 0.78, "moisture": 0.11}
 
-    def predict(self, control: Control) -> RoastState:
+        # covariance
+        self.P = np.eye(10) * 0.05
+
+        # process noise
+        self.Q = np.eye(10) * 0.01
+
+        # measurement noise
+        self.R = np.eye(2) * 0.5
+
+    def predict(self, control: Control, coffee_context: dict, dt_s: float):
         self.state = step_dynamics(
             self.state,
             control,
-            coffee_context=self.coffee_context,
-            dt_s=self.dt_s,
+            coffee_context,
+            dt_s,
         )
-        return self.state
 
-    def update(self, frame: RoastMeasurementFrame, control: Control) -> RoastState:
-        """
-        Correct the predicted state using sensor measurements.
-        """
-        bt_pred, et_pred = observation_from_state(self.state, control)
+        # simplified covariance prediction
+        self.P = self.P + self.Q
 
-        bt_resid = frame.bt_c - bt_pred
-        et_resid = frame.et_c - et_pred
-        ror_resid = (frame.ror_c_per_min / 60.0) - self.state.RoR
+    def update(self, bt_meas, et_meas, control: Control):
+        z = np.array([bt_meas, et_meas], dtype=float)
 
-        # Basic correction gains
-        k_bt = 0.55
-        k_ror = 0.35
-        k_et_to_edrum = 0.015
+        obs = observation_from_state(self.state, control)
+        h = np.array(obs, dtype=float)
 
-        Tb = self.state.Tb + k_bt * bt_resid
-        RoR = self.state.RoR + k_ror * ror_resid
+        # Observation model:
+        # BT = Tb
+        # ET = Tb + 55 * E_drum
+        H = np.zeros((2, 10))
+        H[0, 0] = 1.0
+        H[1, 0] = 1.0
+        H[1, 2] = 32.0
 
-        # Use ET residual to nudge drum energy
-        E_drum = self.state.E_drum + k_et_to_edrum * et_resid
+        S = H @ self.P @ H.T + self.R
+        K = self.P @ H.T @ np.linalg.inv(S)
 
-        # Slight pressure correction from BT + pressure operating point
-        pnorm = _pressure_norm(frame.drum_pressure_pa)
-        P_int = self.state.P_int + 0.01 * bt_resid - 0.003 * pnorm
+        innovation = z - h
+        dx = K @ innovation
+
+        x = np.array([
+            self.state.Tb,
+            self.state.RoR,
+            self.state.E_drum,
+            self.state.M,
+            self.state.P_int,
+            self.state.p_mai,
+            self.state.p_dev,
+            self.state.V_loss,
+            self.state.S_struct,
+            self.state.Q_bias,
+        ], dtype=float)
+
+        x = x + dx
+
+        def clamp(v, lo, hi):
+            return max(lo, min(hi, v))
 
         self.state = RoastState(
-            Tb=Tb,
-            RoR=RoR,
-            E_drum=max(0.0, min(1.6, E_drum)),
-            M=self.state.M,
-            P_int=max(0.0, min(2.0, P_int)),
-            p_mai=self.state.p_mai,
-            p_dev=self.state.p_dev,
-            V_loss=self.state.V_loss,
-            S_struct=self.state.S_struct,
+            Tb=x[0],
+            RoR=clamp(x[1], -0.5, 0.5),        # about -30 to +30 °C/min
+            E_drum=clamp(x[2], 0.0, 1.0),
+            M=clamp(x[3], 0.0, 0.12),
+            P_int=clamp(x[4], 0.0, 2.0),
+            p_mai=clamp(x[5], 0.0, 1.0),
+            p_dev=clamp(x[6], 0.0, 1.0),
+            V_loss=clamp(x[7], 0.0, 1.0),
+            S_struct=clamp(x[8], 0.0, 1.0),
+            Q_bias=clamp(x[9], -1.0, 1.0),    # bounded bias term for model mismatch
         )
+
+        I = np.eye(10)
+        self.P = (I - K @ H) @ self.P
+
         return self.state

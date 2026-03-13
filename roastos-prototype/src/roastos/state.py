@@ -11,12 +11,13 @@ This function can be used to initialize the roast state at the beginning of a ro
 def initial_state() -> RoastState:
     return RoastState(
         Tb=180.0,
-        RoR=0.20,      # ~12 °C/min, much more realistic for late Maillard / crack approach
-        E_drum=0.72,
-        M=0.030,        # lower moisture because this demo starts late in roast
-        P_int=0.05,    # internal pressure proxy
-        p_mai=0.78,
+        RoR=0.12,       # about 7.2 °C/min
+        E_drum=0.45,
+        M=0.045,
+        P_int=0.05,
+        p_mai=0.55,
         p_dev=0.00,
-        V_loss=0.05,
-        S_struct=0.30,
+        V_loss=0.10,
+        S_struct=0.25,
+        Q_bias=0.0,
     )

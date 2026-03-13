@@ -1,34 +1,52 @@
-from __future__ import annotations
-
-import json
 from pathlib import Path
+import json
 
 
-DEFAULT_TWIN_PARAMS = {
-    "alpha_gas": 0.040,
-    "beta_et": 0.018,
-    "gamma_pressure": 0.003,
-    "delta_ror": 0.012,
-    "intercept": 0.0,
-    "ror_gas_gain": 0.010,
-    "ror_et_gain": 0.006,
-    "ror_pressure_cooling": 0.004,
-    "ror_progress_decay": 0.020,
-    "moisture_evap_coeff": 0.0025,
-    "pressure_build_coeff": 0.0015,
-    "pressure_release_coeff": 0.0040,
+MODEL_PATH = Path("artifacts/models/physics_model.json")
+
+
+# ------------------------------------------------------------
+# physics priors (stable defaults)
+# ------------------------------------------------------------
+
+PHYSICS_PRIORS = {
+
+    "intercept": 0.12,
+    "alpha_gas": 0.8,
+    "beta_et": 0.006,
+    "gamma_pressure": 0.002,
+    "delta_ror": 0.4,
+
+    "moisture_evap_coeff": 0.00025,
+    "pressure_build_coeff": 0.00018,
+    "pressure_release_coeff": 0.00040
 }
 
 
-def load_twin_params(path: str | Path = "artifacts/models/physics_model.json") -> dict:
+# blending weight
+CALIBRATION_WEIGHT = 0.30
+
+
+def load_twin_params(path: str | Path = MODEL_PATH):
+
     path = Path(path)
 
     if not path.exists():
-        return DEFAULT_TWIN_PARAMS.copy()
+        print("Physics model not found — using physics priors")
+        return PHYSICS_PRIORS.copy()
 
-    with open(path, "r", encoding="utf-8") as f:
-        loaded = json.load(f)
+    with open(path, "r") as f:
+        calibrated = json.load(f)
 
-    params = DEFAULT_TWIN_PARAMS.copy()
-    params.update(loaded)
+    params = {}
+
+    for key, default_val in PHYSICS_PRIORS.items():
+
+        calib_val = calibrated.get(key, default_val)
+
+        params[key] = (
+            (1 - CALIBRATION_WEIGHT) * default_val
+            + CALIBRATION_WEIGHT * calib_val
+        )
+
     return params

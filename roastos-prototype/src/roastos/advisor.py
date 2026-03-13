@@ -40,7 +40,7 @@ def _infer_stage(state: RoastState) -> str:
     if state.p_dev >= 0.03:
         return "development"
 
-    if state.P_int >= 0.18 or state.Tb >= 190.0:
+    if state.Tb >= 188 or state.P_int >= 0.18:
         return "crack_approach"
 
     return "maillard"

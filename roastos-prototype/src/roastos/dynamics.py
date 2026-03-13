@@ -90,6 +90,6 @@ def observation_from_state(
     """
 
     BT = state.Tb
-    ET = state.Tb + 170.0 * state.E_drum
+    ET = state.Tb + 32.0 * state.E_drum
 
     return BT, ET

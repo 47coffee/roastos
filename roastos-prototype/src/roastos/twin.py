@@ -29,6 +29,18 @@ def step_twin(
     context: TwinContext,
     dt_s: float = 2.0,
 ) -> RoastState:
+    """
+    Stabilized RoastOS Digital Twin.
+
+    State:
+        Tb, RoR, E_drum, M, P_int, p_mai, p_dev, V_loss, S_struct, Q_bias
+
+    Notes:
+    - Q_bias is estimator-side disturbance correction
+    - twin dynamics are aligned with the latest MPC
+    - ET proxy and RoR dynamics are intentionally conservative for stability
+    """
+
     Tb = state.Tb
     RoR = state.RoR
     E_drum = state.E_drum
@@ -38,6 +50,7 @@ def step_twin(
     p_dev = state.p_dev
     V_loss = state.V_loss
     S_struct = state.S_struct
+    Q_bias = getattr(state, "Q_bias", 0.0)
 
     gas = control.gas_pct / 100.0
     pressure = control.drum_pressure_pa
@@ -46,56 +59,69 @@ def step_twin(
     moisture0 = context.moisture0
     roast_progress = compute_roast_progress(state, moisture0)
 
-    # Environment proxy
-    ET_proxy = Tb + 120.0 * E_drum
+    # ------------------------------------------------------------
+    # Pre-update ET proxy
+    # ------------------------------------------------------------
+    ET_proxy = Tb + 25.0 * E_drum
+
+    # ------------------------------------------------------------
+    # Drum energy (stabilized)
+    # ------------------------------------------------------------
+    E_drum = E_drum + (
+        0.012 * gas
+        - (0.020 + 0.008 * (pressure / 120.0)) * E_drum
+    ) * dt_s
+    E_drum = max(0.0, min(1.0, E_drum))
+
+    # ------------------------------------------------------------
+    # Post-update ET proxy
+    # ------------------------------------------------------------
+    ET_proxy = Tb + 32.0 * E_drum
     et_delta = ET_proxy - Tb
 
     # ------------------------------------------------------------
-    # Drum energy
-    # ------------------------------------------------------------
-    E_drum = max(
-        0.0,
-        min(
-            1.0,
-            E_drum + (
-                0.018 * gas
-                - (0.010 + 0.006 * (pressure / 120.0)) * E_drum
-            ) * dt_s,
-        ),
-    )
-
-    # recompute environment after drum update
-    ET_proxy = Tb + 60.0 * E_drum
-    et_delta = ET_proxy - Tb
-
-    # ------------------------------------------------------------
-    # BT update from calibrated coefficients
+    # BT update from blended calibrated coefficients + bias
     # ------------------------------------------------------------
     dTb = (
         params["intercept"]
         + params["alpha_gas"] * gas
         + params["beta_et"] * et_delta
-        - params["gamma_pressure"] * pressure
-        - params["delta_ror"] * (RoR * 60.0)
+        - 0.4 * params["gamma_pressure"] * pressure
     )
 
-    # scale to seconds
-    Tb = Tb + dTb * dt_s
+    Tb = Tb + (dTb + Q_bias) * dt_s
+
+    # ---------------------------------------   ---------------------
+    # Disturbance bias decay
+    # ------------------------------------------------------------
+    Q_bias = 0.995 * Q_bias
 
     # ------------------------------------------------------------
-    # RoR update
+    # RoR update (aligned with MPC)
     # ------------------------------------------------------------
+    thermal_drive = 0.014 * (ET_proxy - Tb)
+    gas_drive = 0.040 * gas
+    pressure_cooling = 0.0010 * pressure
+    progress_damping = 0.14 * roast_progress
+
     dRoR = (
-        params["ror_gas_gain"] * gas
-        + params["ror_et_gain"] * et_delta
-        - params["ror_pressure_cooling"] * pressure
-        - params["ror_progress_decay"] * roast_progress
-        - 0.12 * RoR
+        gas_drive
+        + thermal_drive
+        - pressure_cooling
+        - progress_damping
+        - 0.55 * RoR
     )
 
-    dRoR -= 0.04 * max(drum_speed - 0.65, 0.0)
+    dRoR -= 0.02 * max(drum_speed - 0.65, 0.0)
 
-    RoR = max(-0.2, min(0.8, RoR + dRoR * dt_s))
+    RoR = RoR + dRoR * dt_s
+
+    # clamp to physical range
+    RoR = max(-0.12, min(0.35, RoR))
+
+    # guard against unrealistic strong cooling in this simplified twin
+    if Tb > 120.0 and RoR < -0.05:
+        RoR = -0.05
 
     # ------------------------------------------------------------
     # Moisture
@@ -106,53 +132,42 @@ def step_twin(
         * M
         * dt_s
     )
-    M = max(0.0, M - evap)
+    M = max(0.01, M - evap)
 
     # ------------------------------------------------------------
     # Internal pressure
     # ------------------------------------------------------------
-    pressure_build = params["pressure_build_coeff"] * max(0.0, Tb - 170.0)
-    pressure_release = params["pressure_release_coeff"] * (pressure / 100.0)
+    pressure_build = 0.70 * params["pressure_build_coeff"] * max(0.0, Tb - 178.0)
+    pressure_release = 1.40 * params["pressure_release_coeff"] * (pressure / 100.0)
 
-    P_int = max(0.0, P_int + (pressure_build - pressure_release) * dt_s)
-
-    # ------------------------------------------------------------
-    # Maillard
-    # ------------------------------------------------------------
-    p_mai = max(
-        0.0,
-        min(1.0, p_mai + 0.0020 * max(0.0, Tb - 150.0) * dt_s),
-    )
+    P_int = max(0.0, min(0.30, P_int + (pressure_build - pressure_release) * dt_s))
 
     # ------------------------------------------------------------
-    # Development
+    # Maillard (slowed)
     # ------------------------------------------------------------
-    p_dev = max(
-        0.0,
-        min(1.0, p_dev + 0.0022 * max(0.0, Tb - 195.0) * dt_s),
-    )
+    p_mai = p_mai + 0.00014 * max(0.0, Tb - 150.0) * dt_s
+    p_mai = max(0.0, min(1.0, p_mai))
+
+    # ------------------------------------------------------------
+    # Development (slowed)
+    # ------------------------------------------------------------
+    p_dev = p_dev + 0.0008 * max(0.0, Tb - 190.0) * dt_s
+    p_dev = max(0.0, min(1.0, p_dev))
 
     # ------------------------------------------------------------
     # Volatile loss
     # ------------------------------------------------------------
-    V_loss = max(
-        0.0,
-        min(1.0, V_loss + 0.0012 * max(0.0, Tb - 180.0) * dt_s),
-    )
+    V_loss = V_loss + 0.0012 * max(0.0, Tb - 180.0) * dt_s
+    V_loss = max(0.0, min(1.0, V_loss))
 
     # ------------------------------------------------------------
     # Structure
     # ------------------------------------------------------------
-    S_struct = max(
-        0.0,
-        min(
-            1.0,
-            S_struct + (
-                0.012 * p_dev
-                + 0.004 * Tb / 200.0
-            ) * dt_s,
-        ),
-    )
+    S_struct = S_struct + (
+        0.012 * p_dev
+        + 0.004 * Tb / 200.0
+    ) * dt_s
+    S_struct = max(0.0, min(1.0, S_struct))
 
     return RoastState(
         Tb=Tb,
@@ -164,4 +179,5 @@ def step_twin(
         p_dev=p_dev,
         V_loss=V_loss,
         S_struct=S_struct,
+        Q_bias=Q_bias,
     )

@@ -1,13 +1,38 @@
+from __future__ import annotations
+
 from pathlib import Path
 from datetime import time
+
 import pandas as pd
 
 
-def load_processed_data(processed_folder="data/processed"):
-    processed_folder = Path(processed_folder)
+DEFAULT_PROCESSED_FOLDER = "data/processed"
 
-    roast_sessions = pd.read_parquet(processed_folder / "roast_sessions.parquet")
-    roast_timeseries = pd.read_parquet(processed_folder / "roast_timeseries.parquet")
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _resolve_project_path(path_value: str | Path = DEFAULT_PROCESSED_FOLDER) -> Path:
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return (_project_root() / path).resolve()
+
+
+def load_processed_data(processed_folder: str | Path = DEFAULT_PROCESSED_FOLDER):
+    processed_folder = _resolve_project_path(processed_folder)
+
+    roast_sessions_path = processed_folder / "roast_sessions.parquet"
+    roast_timeseries_path = processed_folder / "roast_timeseries.parquet"
+
+    if not roast_sessions_path.exists():
+        raise FileNotFoundError(f"Missing file: {roast_sessions_path}")
+    if not roast_timeseries_path.exists():
+        raise FileNotFoundError(f"Missing file: {roast_timeseries_path}")
+
+    roast_sessions = pd.read_parquet(roast_sessions_path)
+    roast_timeseries = pd.read_parquet(roast_timeseries_path)
 
     qc_sessions_path = processed_folder / "qc_sessions.parquet"
     if qc_sessions_path.exists():
@@ -31,23 +56,17 @@ def _time_to_seconds(value):
     if pd.isna(value):
         return None
 
-    # already numeric
     if isinstance(value, (int, float)):
         return float(value)
 
-    # pandas timedelta
     if isinstance(value, pd.Timedelta):
         return value.total_seconds()
 
-    # datetime.time
     if isinstance(value, time):
         return value.hour * 3600 + value.minute * 60 + value.second
 
-    # string formats
     if isinstance(value, str):
         value = value.strip()
-
-        # try HH:MM:SS
         try:
             parts = value.split(":")
             if len(parts) == 3:
@@ -64,12 +83,11 @@ def _time_to_seconds(value):
     return None
 
 
-def compute_ror(timeseries):
+def compute_ror(timeseries: pd.DataFrame) -> pd.DataFrame:
     df = timeseries.copy()
 
     df["ror"] = (
-        df.groupby("roast_id")["bt_c"]
-        .diff()
+        df.groupby("roast_id")["bt_c"].diff()
         / df.groupby("roast_id")["time_s"].diff()
     ) * 60
 
@@ -91,13 +109,11 @@ def classify_phase(row, first_crack_time_s):
     return "development"
 
 
-def add_roast_phase(timeseries, roast_sessions):
+def add_roast_phase(timeseries: pd.DataFrame, roast_sessions: pd.DataFrame) -> pd.DataFrame:
     df = timeseries.copy()
     rs = roast_sessions.copy()
 
-    # Convert first crack to numeric seconds
     rs["first_crack_s_numeric"] = rs["first_crack_s"].apply(_time_to_seconds)
-
     fc_times = rs.set_index("roast_id")["first_crack_s_numeric"].to_dict()
 
     phases = []
@@ -110,21 +126,33 @@ def add_roast_phase(timeseries, roast_sessions):
     return df
 
 
-def build_calibration_dataset():
-    roast_sessions, roast_timeseries, qc_sessions = load_processed_data()
+def add_calibration_features(dataset: pd.DataFrame) -> pd.DataFrame:
+    dataset = dataset.copy()
+
+    dataset["bt_next"] = dataset.groupby("roast_id")["bt_c"].shift(-1)
+    dataset["bt_delta"] = dataset["bt_next"] - dataset["bt_c"]
+
+    dataset["et_delta"] = dataset["et_c"] - dataset["bt_c"]
+    dataset["gas_lag1"] = dataset.groupby("roast_id")["gas"].shift(1)
+    dataset["pressure_lag1"] = dataset.groupby("roast_id")["pressure"].shift(1)
+    dataset["et_delta_lag1"] = dataset.groupby("roast_id")["et_delta"].shift(1)
+
+    # Keep only rows where the next-step target exists.
+    dataset = dataset.dropna(subset=["bt_next"]).copy()
+
+    return dataset
+
+
+def build_calibration_dataset(processed_folder: str | Path = DEFAULT_PROCESSED_FOLDER):
+    roast_sessions, roast_timeseries, qc_sessions = load_processed_data(processed_folder)
 
     df = roast_timeseries.copy()
 
-    # compute RoR
     df = compute_ror(df)
-
-    # phase classification
     df = add_roast_phase(df, roast_sessions)
 
-    # remove bad rows
-    df = df.dropna(subset=["bt_c"])
+    df = df.dropna(subset=["bt_c"]).copy()
 
-    # normalize controls
     if "gas_pct" in df.columns:
         df["gas"] = df["gas_pct"] / 100.0
     else:
@@ -152,13 +180,13 @@ def build_calibration_dataset():
         "phase",
     ]
 
-    # keep only existing columns
     dataset = df[[c for c in wanted_cols if c in df.columns]].copy()
+    dataset = add_calibration_features(dataset)
 
-    # attach sensory if available
     if qc_sessions is not None and not qc_sessions.empty:
         sensory_cols = [
-            c for c in [
+            c
+            for c in [
                 "roast_id",
                 "sweetness",
                 "acidity",
@@ -179,15 +207,24 @@ def build_calibration_dataset():
     return dataset
 
 
-def save_calibration_dataset():
-    dataset = build_calibration_dataset()
+def save_calibration_dataset(
+    processed_folder: str | Path = DEFAULT_PROCESSED_FOLDER,
+    output_path: str | Path | None = None,
+):
+    dataset = build_calibration_dataset(processed_folder)
 
-    output_path = Path("data/processed/calibration_dataset.parquet")
+    if output_path is None:
+        output_path = _resolve_project_path("data/processed/calibration_dataset.parquet")
+    else:
+        output_path = Path(output_path)
+        if not output_path.is_absolute():
+            output_path = (_project_root() / output_path).resolve()
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
     dataset.to_parquet(output_path, index=False)
 
     print("Calibration dataset saved.")
+    print("Output:", output_path)
     print("Rows:", len(dataset))
     print("Roasts:", dataset["roast_id"].nunique())
     print("Columns:", list(dataset.columns))

@@ -1,0 +1,26 @@
+{
+  "model_version": "v1",
+  "target": "bt_delta",
+  "feature_names": [
+    "intercept",
+    "gas",
+    "gas_lag1",
+    "et_delta",
+    "et_delta_lag1",
+    "neg_pressure",
+    "neg_pressure_lag1",
+    "neg_ror"
+  ],
+  "intercept": -0.3221638416496671,
+  "gas": 1.1997260313652573e-17,
+  "gas_lag1": 2.6110976957057968e-18,
+  "et_delta": 3.5933328720572497e-17,
+  "et_delta_lag1": 0.01181974213675291,
+  "neg_pressure": 4.483254296552054e-25,
+  "neg_pressure_lag1": 2.8057326201396894e-21,
+  "neg_ror": 7.855089427900904e-24,
+  "rmse": 1.284449365724396,
+  "mae": 0.6422824723280154,
+  "r2": 0.06077099293914989,
+  "n_samples": 6156
+}

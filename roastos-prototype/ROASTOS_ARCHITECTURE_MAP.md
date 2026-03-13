@@ -99,23 +99,23 @@ Next control step
 ## 5. Architectural Layers
 ### Layer 1 – Data Ingestion Layer
 
-Purpose:
+#### Purpose:
 
 Bring historical roast and QC data into RoastOS in a normalized form.
 
-Main files:
+#### Main files:
 
 src/roastos/data/cropster_import.py
 
 src/roastos/data/dataset_builder.py
 
-Inputs:
+#### Inputs:
 
 Cropster roast exports
 
 Cropster QC files
 
-Outputs:
+#### Outputs:
 
 processed roast tables
 
@@ -123,13 +123,13 @@ calibration tables
 
 feature-ready roast records
 
-Current status:
+#### Current status:
 
 real architecture exists
 
 importer still needs robustness and config stabilization
 
-Prototype limitations:
+#### Prototype limitations:
 
 config path / loading issues
 
@@ -137,7 +137,7 @@ importer not yet hardened for all export variants
 
 schema validation not yet complete
 
-Target final state:
+#### Target final state:
 
 robust multi-machine ingestion layer
 
@@ -149,15 +149,15 @@ replayable lineage
 
 ### Layer 2 – Calibration Layer
 
-Purpose:
+#### Purpose:
 
 Estimate machine-relevant physical coefficients from real roasts.
 
-Main file:
+#### Main file:
 
 src/roastos/data/physics_calibration.py
 
-Inputs:
+#### Inputs:
 
 processed roast data
 
@@ -165,17 +165,17 @@ machine signals
 
 roast event alignment
 
-Outputs:
+#### Outputs:
 
 calibrated thermal coefficients
 
 machine-response parameters
 
-Current status:
+#### Current status:
 
 bounded least-squares style calibration exists
 
-Prototype limitations:
+#### Prototype limitations:
 
 simplified calibration targets
 
@@ -183,7 +183,7 @@ limited coefficient families
 
 uncertainty not yet modeled
 
-Target final state:
+#### Target final state:
 
 multi-stage calibration
 
@@ -197,15 +197,15 @@ residual calibration terms
 
 ### Layer 3 – Prior / Twin Loading Layer
 
-Purpose:
+#### Purpose:
 
 Blend engineering priors and calibrated coefficients into a machine twin.
 
-Main file:
+#### Main file:
 
 src/roastos/twin_loader.py
 
-Inputs:
+#### Inputs:
 
 physics defaults
 
@@ -213,15 +213,15 @@ calibrated coefficients
 
 machine defaults
 
-Outputs:
+#### Outputs:
 
 twin parameter set used by runtime system
 
-Current status:
+#### Current status:
 
 simple prior + calibration blending exists
 
-Prototype limitations:
+#### Prototype limitations:
 
 fixed blend logic
 
@@ -229,7 +229,7 @@ no confidence adaptation
 
 not yet roaster-specific
 
-Target final state:
+#### Target final state:
 
 adaptive blending based on data quality
 
@@ -239,7 +239,7 @@ confidence-aware model loading
 
 ### Layer 4 – Domain State Definition Layer
 
-Purpose:
+#### Purpose:
 
 Define the state variables and typed control structures used by RoastOS.
 
@@ -249,7 +249,7 @@ src/roastos/types.py
 
 src/roastos/state.py
 
-Defines:
+#### Defines:
 
 roast state
 
@@ -263,7 +263,7 @@ Current status:
 
 core typed state already exists
 
-Prototype limitations:
+#### Prototype limitations:
 
 uncertainty states still limited
 
@@ -271,7 +271,7 @@ event-state richness limited
 
 crack probability state missing
 
-Target final state:
+#### Target final state:
 
 richer typed domain model
 
@@ -285,17 +285,17 @@ roast style state
 
 ### Layer 5 – Digital Twin / Physics Layer
 
-Purpose:
+#### Purpose:
 
 Simulate the roast forward from state + control.
 
-Main files:
+#### Main files:
 
 src/roastos/twin.py
 
 src/roastos/dynamics.py
 
-Inputs:
+#### Inputs:
 
 current estimated latent state
 
@@ -303,13 +303,13 @@ candidate controls
 
 machine parameters
 
-Outputs:
+#### Outputs:
 
 next predicted roast state
 
 projected trajectory
 
-Current state variables typically include:
+#### Current state variables typically include:
 
 bean temperature estimate
 
@@ -329,13 +329,13 @@ volatile loss
 
 structure index
 
-Current status:
+#### Current status:
 
 hybrid hand-coded twin exists
 
 some parameters calibrated on real roasts
 
-Still hardcoded today:
+#### Still hardcoded today:
 
 equation form of ET proxy
 
@@ -351,7 +351,7 @@ Maillard/development dynamics
 
 volatile loss and structure logic
 
-What is already real:
+#### What is already real:
 
 state decomposition is real
 
@@ -359,7 +359,7 @@ calibrated coefficients are partly real
 
 runtime twin role is real
 
-Target final state:
+#### Target final state:
 
 physics prior
 
@@ -377,7 +377,7 @@ This is one of the core hybrid layers of RoastOS.
 
 ### Layer 6 – Observation Layer
 
-Purpose:
+#### Purpose:
 
 Map latent state into observable measurements.
 

@@ -99,6 +99,11 @@ Future implementation will combine:
 • user-defined intent  
 • learned roaster style model.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.2 Roast Structure Layer
@@ -129,6 +134,11 @@ Hardcoded vs learned:
 Currently engineered relationships.  
 Future system will learn structure → flavour relationships from data.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.3 Roast Physics Layer (Digital Twin)
@@ -177,6 +187,14 @@ Physics prior
 + calibrated coefficients  
 + learned residual corrections.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid: This result supports the hybrid strategy:
+    keep physics prior
+    calibrate coefficients
+    add learned residuals later
 ---
 
 # 3.4 Observation Model
@@ -207,6 +225,11 @@ Future improvements:
 • per-machine observation models  
 • sensor fault detection.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.5 State Estimation
@@ -239,6 +262,11 @@ Full estimator with:
 • crack probability estimation
 • actuator delay estimation.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.6 Control Layer (MPC)
@@ -273,6 +301,11 @@ Future improvements:
 • uncertainty-aware optimization
 • faster warm-started solvers.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.7 High-Level Controller
@@ -293,6 +326,11 @@ Future version:
 
 Multi-strategy planner evaluating alternative roast trajectories.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.8 Flavour Prediction Layer
@@ -323,6 +361,11 @@ src/roastos/predictor.py
 src/roastos/features.py  
 src/roastos/inference_row_builder.py
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.9 Advisor System
@@ -348,6 +391,11 @@ Future improvements:
 • multilingual support
 • confidence scoring.
 
+## Model Ownership by Layer
+- Hardcoded prior:
+- Calibrated:
+- Learned:
+- Hybrid:
 ---
 
 # 3.10 Alerting System

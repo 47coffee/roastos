@@ -1,0 +1,603 @@
+# RoastOS – System Context
+
+## 1. Project Overview
+
+RoastOS is an AI-assisted coffee roasting system designed to transform roasting from **process control** into **flavour control**.
+
+The system maps:
+
+Flavour Intent → Roast Structure → Roast Physics → Flavour Prediction → Control Action
+
+The architecture combines:
+
+• engineered physical priors  
+• calibration from real roast data  
+• machine learning models  
+• predictive control optimization  
+
+The system runs as a hybrid digital twin + estimator + MPC controller capable of recommending optimal roasting actions during a roast.
+
+Primary goals:
+
+• Predict flavour outcomes from roast dynamics  
+• Guide roasting decisions during live roasting  
+• Learn from historical roast and QC data  
+• Adapt to individual roaster style and machine characteristics  
+
+The system is being developed as a **hybrid physics + ML architecture** rather than a purely data-driven system.
+
+---
+
+# 2. Current Development Status
+
+Project stage: **Phase-1 Prototype Architecture**
+
+The system currently includes:
+
+• Roast data ingestion  
+• Dataset building pipeline  
+• Physical calibration framework  
+• Digital twin simulation  
+• Online state estimation  
+• Nonlinear MPC controller  
+• Flavour model prototype  
+• Advisor messaging system  
+• Alerts and logging  
+• Machine gateway abstraction  
+• Live orchestration loop
+
+The architecture is operational in simulation mode with dummy gateway integration.
+
+Primary machine reference: **Probat P12 III**
+
+Additional target machines for future compatibility:
+
+• Giesen
+• Dutch Master
+• Other drum roasters
+
+---
+
+# 3. Core Architecture
+
+RoastOS is structured in layered modules.
+
+---
+
+# 3.1 Flavour Intent Layer
+
+Purpose:
+
+Convert desired sensory outcome into a target roasting direction.
+
+Typical flavour intent dimensions:
+
+• sweetness  
+• clarity  
+• acidity  
+• body  
+• bitterness  
+• aroma  
+
+Current implementation:
+
+Flavour intent vectors exist conceptually but are not yet fully integrated into the control layer.
+
+Future target:
+
+Flavour intent becomes the **primary input to the system**, guiding structural roast targets.
+
+Example:
+
+Sweetness focus → extended Maillard → lower RoR near FC → longer development.
+
+Hardcoded vs learned:
+
+Currently mostly conceptual.  
+Future implementation will combine:
+
+• user-defined intent  
+• learned roaster style model.
+
+---
+
+# 3.2 Roast Structure Layer
+
+Purpose:
+
+Translate flavour intent into structural roast targets.
+
+Typical structure variables:
+
+• Drying progress  
+• Maillard development  
+• Development phase progress  
+• Volatile loss index  
+• Structural transformation index  
+• RoR at first crack  
+
+Current implementation:
+
+Structure variables exist inside the digital twin state.
+
+Future state:
+
+Structure layer becomes the main **control target space** for MPC optimization.
+
+Hardcoded vs learned:
+
+Currently engineered relationships.  
+Future system will learn structure → flavour relationships from data.
+
+---
+
+# 3.3 Roast Physics Layer (Digital Twin)
+
+Purpose:
+
+Simulate roast process dynamics.
+
+Core latent state variables include:
+
+• bean temperature estimate  
+• filtered RoR  
+• drum energy proxy  
+• moisture proxy  
+• internal pressure proxy  
+• Maillard progress  
+• development progress  
+• volatile loss  
+• structural transformation index
+
+Main files:
+
+src/roastos/twin.py  
+src/roastos/dynamics.py  
+
+Current implementation:
+
+Hybrid hand-coded physics model with calibrated coefficients.
+
+Includes simplified dynamics for:
+
+• gas input  
+• drum energy  
+• ET proxy  
+• moisture decay  
+• Maillard progression  
+• development phase  
+• volatile loss  
+• structure evolution
+
+Future target:
+
+Hybrid twin model:
+
+Physics prior  
++ calibrated coefficients  
++ learned residual corrections.
+
+---
+
+# 3.4 Observation Model
+
+Purpose:
+
+Map latent state to measurable sensors.
+
+Examples:
+
+• Bean Temperature  
+• Environmental Temperature  
+• Rate of Rise
+
+Files:
+
+src/roastos/observation.py  
+src/roastos/dynamics.py
+
+Current implementation:
+
+Simple mapping between state variables and observed sensors.
+
+Future improvements:
+
+• sensor bias estimation  
+• latency correction  
+• per-machine observation models  
+• sensor fault detection.
+
+---
+
+# 3.5 State Estimation
+
+Purpose:
+
+Estimate full latent roast state from sensor measurements.
+
+File:
+
+src/roastos/estimator.py
+
+Current implementation:
+
+Lightweight EKF-style observer including disturbance bias correction.
+
+Estimator integrates:
+
+• digital twin prediction
+• sensor observations
+• RoR filtering
+• disturbance correction
+
+Future target:
+
+Full estimator with:
+
+• EKF / UKF
+• uncertainty propagation
+• crack probability estimation
+• actuator delay estimation.
+
+---
+
+# 3.6 Control Layer (MPC)
+
+Purpose:
+
+Optimize machine controls to guide roast trajectory.
+
+Controls:
+
+• gas
+• drum pressure / airflow
+• drum speed (future)
+
+File:
+
+src/roastos/mpc.py
+
+Current implementation:
+
+Nonlinear MPC with:
+
+• move blocking
+• structure-oriented objective
+• control penalties
+• solver fallback
+
+Future improvements:
+
+• crack-zone constraints
+• actuator inertia modelling
+• uncertainty-aware optimization
+• faster warm-started solvers.
+
+---
+
+# 3.7 High-Level Controller
+
+Purpose:
+
+Evaluate candidate control sequences and choose optimal strategy.
+
+File:
+
+src/roastos/controller.py
+
+Current implementation:
+
+Simulates trajectories and evaluates predicted flavour outcomes.
+
+Future version:
+
+Multi-strategy planner evaluating alternative roast trajectories.
+
+---
+
+# 3.8 Flavour Prediction Layer
+
+Purpose:
+
+Map roast structure to predicted sensory outcomes.
+
+File:
+
+src/roastos/flavor_model.py
+
+Current implementation:
+
+Handcrafted interpretable flavour equations based on latent state variables.
+
+Future architecture:
+
+Hybrid flavour model:
+
+Interpretable flavour prior  
++ learned ML correction.
+
+ML pipeline components already exist:
+
+src/roastos/trainer.py  
+src/roastos/predictor.py  
+src/roastos/features.py  
+src/roastos/inference_row_builder.py
+
+---
+
+# 3.9 Advisor System
+
+Purpose:
+
+Convert control outputs into concise operator advice.
+
+File:
+
+src/roastos/advisor.py
+
+Example output format:
+
+WHAT  
+WHY  
+HOW
+
+Future improvements:
+
+• verbosity modes
+• role-based guidance
+• multilingual support
+• confidence scoring.
+
+---
+
+# 3.10 Alerting System
+
+Purpose:
+
+Detect problematic roast conditions.
+
+File:
+
+src/roastos/alerts.py
+
+Current alerts include:
+
+• RoR high
+• RoR low
+• clarity risk
+• bitterness risk
+
+Future system:
+
+Hierarchical alerts including:
+
+• crack instability
+• stall / flick risk
+• sensor faults
+• machine safety warnings.
+
+---
+
+# 3.11 Logging
+
+Purpose:
+
+Persist runtime roast data.
+
+File:
+
+src/roastos/logger.py
+
+Current implementation:
+
+CSV logging.
+
+Future system:
+
+Full telemetry database with replay capability.
+
+---
+
+# 3.12 Live Orchestration
+
+Purpose:
+
+Run full roasting loop.
+
+File:
+
+src/roastos/orchestrator.py
+
+Responsibilities:
+
+• gateway communication
+• state estimation
+• MPC optimization
+• advisor output
+• logging
+• alerts
+
+Currently running with simulated machine gateway.
+
+---
+
+# 3.13 Machine Gateway
+
+Purpose:
+
+Interface with roasting machines.
+
+Files:
+
+src/roastos/gateway/base.py  
+src/roastos/gateway/dummy_dutchmaster.py  
+src/roastos/gateway/schemas.py
+
+Current gateway:
+
+Dummy Dutch Master simulation.
+
+Future:
+
+Real machine API integrations.
+
+---
+
+# 4. Data Pipeline
+
+Data sources:
+
+• Cropster roast exports  
+• Cropster QC files  
+
+Data ingestion:
+
+src/roastos/data/cropster_import.py
+
+Dataset building:
+
+src/roastos/data/dataset_builder.py
+
+Physics calibration:
+
+src/roastos/data/physics_calibration.py
+
+Output datasets:
+
+• processed roast time series
+• per-roast feature tables
+• calibration datasets.
+
+---
+
+# 5. Current Hardcoded Logic
+
+The following components are still engineered assumptions:
+
+Physics equations:
+
+• ET proxy
+• drum energy evolution
+• RoR dynamics
+• moisture decay
+• pressure dynamics
+• Maillard progression
+• development progression
+• volatile loss
+
+Flavour model:
+
+Currently fully handcrafted relationships.
+
+Advisor logic:
+
+Human-designed roast heuristics.
+
+---
+
+# 6. Components Already Using Real Data
+
+Cropster roast ingestion.
+
+Physics calibration.
+
+Dataset builder.
+
+ML pipeline scaffolding.
+
+---
+
+# 7. Intended Hybrid Model Architecture
+
+Physics layer:
+
+Physics prior  
++ calibrated coefficients  
++ learned residual corrections.
+
+Flavour layer:
+
+Interpretable flavour prior  
++ supervised ML model.
+
+Control layer:
+
+Model predictive control with flavour-aware objective.
+
+---
+
+# 8. Repository Structure
+
+Main project directory:
+
+roastos-prototype/
+
+Key directories:
+
+src/roastos/
+
+Major modules:
+
+data/  
+twin/  
+estimator/  
+mpc/  
+controller/  
+advisor/  
+alerts/  
+gateway/  
+logging/  
+orchestrator/
+
+---
+
+# 9. Current Active Issues
+
+Dataset ingestion still unstable due to config resolution problems.
+
+Config loading occasionally returns empty section list.
+
+Cropster importer requires robustness improvements.
+
+---
+
+# 10. Current Priorities
+
+1. Stabilize Cropster data ingestion.
+2. Build reliable training dataset.
+3. Improve physics calibration pipeline.
+4. Integrate ML flavour model into live system.
+5. Improve crack dynamics in twin model.
+
+---
+
+# 11. Long-Term Vision
+
+RoastOS evolves into:
+
+Hybrid AI roasting system combining:
+
+• physical roast modelling
+• machine learning flavour prediction
+• predictive control
+• roaster-specific style learning
+
+The system adapts to both:
+
+• machine characteristics
+• roaster style
+
+while maintaining interpretability and operator trust.
+
+---
+
+# 12. How to Continue the Project in a New Chat
+
+To continue development in a new AI session:
+
+1. Paste this file.
+2. Paste latest entries from `ROASTOS_CHANGELOG.md`.
+3. Paste the current code snippet or error.
+4. Describe the current task.
+
+This allows the assistant to continue development without needing the full historical chat context.

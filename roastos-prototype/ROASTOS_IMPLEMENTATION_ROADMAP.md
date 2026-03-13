@@ -51,13 +51,19 @@ Instead:
 ## 4. Roadmap Table
 
 Current status:
+V1, V1.1, V2, V2.1, and V2.2 physics calibration completed. Current best interpretation is that BT dynamics are primarily explained by ET-BT gradient, bean-state proxy (BT level), RoR damping, and a small latent machine-momentum term.
+
 Global V1 bounded calibration completed successfully; result dominated by lagged ET-BT with low explanatory power.
+
 
 Concrete next coding step:
 Implement V1.1 phase-specific calibration by fitting separate bounded models for drying, maillard, and development.
+Build the RoastOS Roaster Simulator / digital twin forward simulator from the calibrated physics structure.
+
 
 Success criterion:
 Phase-separated models produce more informative coefficients and/or better diagnostics than the global V1 baseline.
+Starting from a historical roast state, the simulator can roll forward a plausible BT / ET / RoR trajectory over a short horizon and behave consistently under control perturbations.
 
 | Layer / Component | Current Status | Target Model Type | Keep as Hardcoded Prior | Replace with Learned Model | Hybrid Recommended | Concrete Next Coding Step | Dependencies | Success Criterion | Priority |
 |---|---|---|---|---|---|---|---|---|---|
@@ -119,21 +125,18 @@ Exit criteria:
 ---
 
 ### Phase B – Strengthen the Hybrid Physical Core
-
 Goal:
 
-Make the twin and estimator materially more trustworthy.
-
-Current immediate sub-step:
-V1.1 phase-specific calibration before introducing latent drum-energy state.
+Turn the current calibrated one-step physics interpretation into a forward-simulation digital twin.
 
 Main work:
 
-1. Expand calibration richness
-2. Refactor twin into prior + calibration + residual structure
-3. Improve observation model
-4. Improve estimator structure
-5. Replace simple disturbance handling with structured residual correction
+1. Apply dataset-builder missing-data fix
+2. Freeze current calibrated model family
+3. Build roaster simulator state transition function
+4. Build multi-step rollout / replay validation harness
+5. Compare simulator predictions against historical roasts
+6. Only then refine residual corrections / observation model / estimator
 
 Why second:
 

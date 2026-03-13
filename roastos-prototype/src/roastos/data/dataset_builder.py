@@ -85,6 +85,7 @@ def _time_to_seconds(value):
 
 def compute_ror(timeseries: pd.DataFrame) -> pd.DataFrame:
     df = timeseries.copy()
+    df = df.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
 
     df["ror"] = (
         df.groupby("roast_id")["bt_c"].diff()
@@ -126,8 +127,30 @@ def add_roast_phase(timeseries: pd.DataFrame, roast_sessions: pd.DataFrame) -> p
     return df
 
 
+def forward_fill_machine_channels(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Forward-fill machine control channels *within each roast only*.
+
+    This avoids losing rows when Cropster exports have control/sensor blanks at
+    the beginning/end or in sparse sections. It does not use future values, so it
+    does not introduce look-ahead / crystal-ball leakage.
+    """
+    out = df.copy()
+    out = out.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
+
+    cols_to_ffill = [
+        col for col in ["gas", "pressure", "drum_speed", "et_c"] if col in out.columns
+    ]
+
+    if cols_to_ffill:
+        out[cols_to_ffill] = out.groupby("roast_id")[cols_to_ffill].ffill()
+
+    return out
+
+
 def add_calibration_features(dataset: pd.DataFrame) -> pd.DataFrame:
     dataset = dataset.copy()
+    dataset = dataset.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
 
     dataset["bt_next"] = dataset.groupby("roast_id")["bt_c"].shift(-1)
     dataset["bt_delta"] = dataset["bt_next"] - dataset["bt_c"]
@@ -136,6 +159,13 @@ def add_calibration_features(dataset: pd.DataFrame) -> pd.DataFrame:
     dataset["gas_lag1"] = dataset.groupby("roast_id")["gas"].shift(1)
     dataset["pressure_lag1"] = dataset.groupby("roast_id")["pressure"].shift(1)
     dataset["et_delta_lag1"] = dataset.groupby("roast_id")["et_delta"].shift(1)
+
+    dataset["gas_delta"] = dataset["gas"] - dataset["gas_lag1"]
+    dataset["pressure_delta"] = dataset["pressure"] - dataset["pressure_lag1"]
+    dataset["bt_c_norm"] = dataset["bt_c"] / 200.0
+
+    roast_duration = dataset.groupby("roast_id")["time_s"].transform("max")
+    dataset["time_frac"] = dataset["time_s"] / roast_duration.replace(0, pd.NA)
 
     # Keep only rows where the next-step target exists.
     dataset = dataset.dropna(subset=["bt_next"]).copy()
@@ -147,26 +177,31 @@ def build_calibration_dataset(processed_folder: str | Path = DEFAULT_PROCESSED_F
     roast_sessions, roast_timeseries, qc_sessions = load_processed_data(processed_folder)
 
     df = roast_timeseries.copy()
+    df = df.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
 
+    if "gas_pct" in df.columns:
+        df["gas"] = pd.to_numeric(df["gas_pct"], errors="coerce") / 100.0
+    else:
+        df["gas"] = pd.NA
+
+    if "drum_speed_pct" in df.columns:
+        df["drum_speed"] = pd.to_numeric(df["drum_speed_pct"], errors="coerce") / 100.0
+    else:
+        df["drum_speed"] = pd.NA
+
+    if "drum_pressure_pa" in df.columns:
+        df["pressure"] = pd.to_numeric(df["drum_pressure_pa"], errors="coerce")
+    else:
+        df["pressure"] = pd.NA
+
+    if "et_c" in df.columns:
+        df["et_c"] = pd.to_numeric(df["et_c"], errors="coerce")
+
+    df = forward_fill_machine_channels(df)
     df = compute_ror(df)
     df = add_roast_phase(df, roast_sessions)
 
     df = df.dropna(subset=["bt_c"]).copy()
-
-    if "gas_pct" in df.columns:
-        df["gas"] = df["gas_pct"] / 100.0
-    else:
-        df["gas"] = None
-
-    if "drum_speed_pct" in df.columns:
-        df["drum_speed"] = df["drum_speed_pct"] / 100.0
-    else:
-        df["drum_speed"] = None
-
-    if "drum_pressure_pa" in df.columns:
-        df["pressure"] = df["drum_pressure_pa"]
-    else:
-        df["pressure"] = None
 
     wanted_cols = [
         "roast_id",
@@ -228,7 +263,10 @@ def save_calibration_dataset(
     print("Rows:", len(dataset))
     print("Roasts:", dataset["roast_id"].nunique())
     print("Columns:", list(dataset.columns))
+    print("Missing values summary:")
+    print(dataset[[c for c in ["bt_c", "et_c", "gas", "pressure", "ror"] if c in dataset.columns]].isna().sum())
 
 
 if __name__ == "__main__":
     save_calibration_dataset()
+

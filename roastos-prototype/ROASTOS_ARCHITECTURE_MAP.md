@@ -20,6 +20,9 @@ It is the bridge between concept, codebase, and system evolution.
 
 ---
 ## Current architectural focus
+Primary work area: calibration -> simulator transition
+Most recently completed layer: phase-specific + V2-series physics calibration
+Next layer to industrialize: RoastOS roaster simulator / digital twin forward simulation
 Primary work area: physics calibration
 Most recently completed layer: data spine + baseline physics calibration
 Next layer to industrialize: phase-specific calibration
@@ -130,9 +133,12 @@ feature-ready roast records
 
 #### Current status:
 
-real architecture exists
-
-importer still needs robustness and config stabilization
+- real architecture exists
+- project-root config/path issues fixed
+- processed parquet pipeline operational
+- calibration dataset generation operational
+- missing machine-channel issue diagnosed in some Cropster exports
+- prepared fix: within-roast forward fill of machine channels before calibration feature generation
 
 #### Prototype limitations:
 
@@ -178,15 +184,25 @@ machine-response parameters
 - bounded least-squares calibration pipeline operational
 - calibration dataset successfully built from Cropster imports
 - baseline global calibration completed
-- V1 global fit mostly selects lagged ET-BT as dominant predictor
+- V1.1 phase-specific calibration completed
+- V2 / V2.1 / V2.2 richer calibration experiments completed
+- calibration dataset expanded from 8 to 16 roasts
+
+Current findings:
+- global V1 was dominated by lagged ET-BT
+- phase separation improved interpretability materially
+- direct gas terms still do not survive once ET-derived variables are present
+- current BT level behaves as a strong bean-state proxy, especially in Maillard
+- latent drum-energy signal survives weakly, mainly in development
 
 Current limitation:
-- global linear one-step model does not recover richer gas / pressure effects
-- likely due to phase mixing, collinearity, and missing latent thermal memory
+- one-step regression calibration is now reaching diminishing returns
+- current model is useful for simulator design but is not yet a full causal digital twin
 
 Next architectural step:
-- split calibration by roast phase
-- compare phase-specific coefficients before introducing richer latent drum-energy state
+- freeze the current calibrated structure
+- build RoastOS roaster simulator / forward digital twin
+- validate multi-step trajectory quality on historical roasts
 
 #### Prototype limitations:
 
@@ -347,6 +363,16 @@ structure index
 hybrid hand-coded twin exists
 
 some parameters calibrated on real roasts
+##### Calibration status informing this layer:
+
+Current calibration evidence suggests the next twin should be built around:
+
+- ET-BT thermal gradient as primary observable heat-transfer driver
+- BT level as bean-state proxy
+- RoR as dynamic damping / momentum term
+- optional latent machine-momentum state (`e_drum`) mainly for later-phase dynamics
+
+This layer is now ready to move from one-step coefficient fitting to explicit forward simulation.
 
 #### Still hardcoded today:
 
@@ -1030,6 +1056,20 @@ Not purely handcoded.
 Not purely black-box ML.
 
 ## 8. Best Next Technical Priorities
+
+Apply the dataset-builder missing-data fix and regenerate the calibration dataset
+
+Freeze the current calibration structure as the current best physics prior
+
+Build the RoastOS roaster simulator / digital twin forward simulator
+
+Validate multi-step simulated trajectories against historical roasts
+
+Then continue with:
+- residual correction
+- observation refinement
+- flavour-model integration
+- MPC re-coupling to the calibrated simulator
 
 Stabilize Cropster import and config loading
 

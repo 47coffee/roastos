@@ -13,6 +13,84 @@ Only record:
 • calibration improvements  
 
 ---
+## 2026-03-13 (continued)
+
+### Work completed
+- Implemented Physics Calibration V1.1 with separate bounded models for:
+  - `drying`
+  - `maillard`
+  - `development`
+- Confirmed that phase separation materially improves interpretability versus global V1.
+- Implemented Physics Calibration V2 with latent drum-energy state:
+  - recursive `e_drum`
+  - hyperparameter search over latent decay and pressure scale
+- Added additional calibration features in dataset generation:
+  - `gas_delta`
+  - `pressure_delta`
+  - `bt_c_norm`
+  - `time_frac`
+- Implemented V2.1:
+  - reintroduced direct `gas` and `gas_lag1`
+  - tightened latent-state search grid
+- Implemented V2.2:
+  - removed `et_delta_lag1`
+  - used current `et_delta`
+  - tested both `include_gas = True/False`
+- Expanded dataset from 8 to 16 roasts
+- Diagnosed missing machine-channel data in calibration dataset:
+  - `gas`
+  - `pressure`
+  - `et_delta`
+- Implemented dataset-builder fix using within-roast forward fill for machine channels before feature generation
+
+### Files modified
+- `src/roastos/data/dataset_builder.py`
+- `src/roastos/data/physics_calibration.py`
+
+### V1.1 result summary
+Phase-specific calibration revealed physically meaningful structure:
+- drying remained dominated by lagged thermal gradient
+- maillard revealed gas / bean-state / RoR effects
+- development revealed stronger gas / momentum effects
+
+Interpretation:
+Phase separation was necessary and validated.
+
+### V2 / V2.1 / V2.2 result summary
+Across richer model variants, direct gas terms consistently failed to survive once ET-derived variables were present.
+The best-performing simplified model remains dominated by:
+- `et_delta` or lagged ET-BT proxy
+- `neg_bt_level` in Maillard
+- `neg_ror`
+- small `e_drum` effect mainly in development
+
+Interpretation:
+The current calibration evidence suggests:
+- ET-BT is the dominant observable thermal driver
+- current BT level is an important proxy for bean state
+- latent machine momentum matters mainly in later roast stages
+- direct gas is largely absorbed through ET in the current observable system
+
+### Current best calibration interpretation
+Best current model family:
+Physics Calibration V2.2
+
+High-level form:
+`bt_delta ≈ f(et_delta, bt_level, ror, e_drum)`
+
+### Remaining issue
+The system now appears limited more by model specification than by data scarcity.
+Main open problem:
+move from one-step regression calibration to a forward-simulation digital twin / roaster simulator.
+
+### Next step
+Build RoastOS Roaster Simulator:
+- define runtime roast state for simulation
+- load calibrated phase model / coefficients
+- simulate forward `X_t -> X_{t+1}`
+- predict BT / ET / RoR trajectory over horizon
+- use this as the basis for digital twin validation and later MPC
+
 ## 2026-03-13
 
 ### Work completed

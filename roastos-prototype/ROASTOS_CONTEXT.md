@@ -34,6 +34,100 @@ Project stage: **Phase-1 Prototype Architecture**
 
 ## 20260313
 Current phase:
+Data spine complete, phase-specific physics calibration complete, V2-series calibration experiments complete.
+
+Latest completed milestone:
+RoastOS Physics Calibration V2.2 completed on 16 roasts.
+
+What now works end-to-end:
+Cropster Excel import -> processed parquet tables -> calibration dataset -> phase-aware bounded physics calibration -> saved model artifacts.
+
+Current next objective:
+Build the RoastOS Roaster Simulator / digital twin forward simulator using the calibrated physics structure.
+
+Current blocker:
+No hard blocker, but calibration has now exposed a model-structure limitation:
+one-step regression is no longer the main bottleneck; forward simulation is the next required step.
+
+## Current Active Issues
+
+- Sparse machine channels in some Cropster exports created avoidable missing values in:
+  - `gas`
+  - `pressure`
+  - `et_delta`
+- A dataset-builder fix is now prepared using within-roast forward fill only.
+- Direct gas terms do not survive calibration once ET-derived variables are present.
+- Current calibration is good enough to guide simulator design, but not yet a full causal machine twin.
+
+## Physics Calibration Status
+
+### V1 Baseline
+Global bounded one-step BT-delta model.
+Result:
+dominated by lagged ET-BT, with low explanatory power.
+
+### V1.1 Phase-Specific Calibration
+Separate bounded models for:
+- drying
+- maillard
+- development
+
+Main finding:
+phase separation materially improved interpretability and partially revealed richer thermal structure.
+
+### V2 Series
+Introduced:
+- latent drum-energy proxy `e_drum`
+- `bt_c_norm` as bean-state proxy
+- tighter phase-specific calibration structure
+- expanded feature variants through V2, V2.1, and V2.2
+
+### Current best interpretation from calibration
+The most stable result across 16 roasts is:
+
+`bt_delta ≈ f(et_delta, bt_level, ror, e_drum)`
+
+Interpretation:
+- ET-BT is the dominant observable thermal driver
+- BT level acts as an important proxy for bean state
+- RoR acts as dynamic damping / momentum constraint
+- latent machine momentum appears mainly in development
+- direct gas is mostly absorbed through ET in the current data representation
+
+### Current calibration evidence by phase
+Drying:
+- mostly ET-driven
+- latent drum energy not yet clearly identified
+
+Maillard:
+- ET gradient + bean-state proxy + RoR are the key drivers
+
+Development:
+- ET gradient + RoR remain important
+- small latent drum-energy effect survives
+
+### Data status
+Calibration dataset has now been expanded to 16 roasts.
+
+Observed issue:
+some Cropster exports contain blank machine channels while BT remains populated.
+Prepared mitigation:
+within-roast forward fill for machine channels only, with no backward fill and no future leakage.
+
+## Current priorities
+
+1. Apply dataset-builder missing-data fix and regenerate calibration dataset.
+2. Freeze current calibration model family as the basis for simulation.
+3. Build RoastOS Roaster Simulator:
+   - state definition
+   - one-step transition function
+   - multi-step rollout
+   - trajectory plotting / validation
+4. Compare simulated trajectories to historical roast curves.
+5. Use simulator as the basis for later digital twin refinement and MPC integration.
+
+## 20260313
+Current phase:
 Data spine complete, baseline physics calibration complete.
 
 Latest completed milestone:

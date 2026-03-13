@@ -1,0 +1,318 @@
+{
+  "model_version": "v2.2",
+  "target": "bt_delta",
+  "latent_state": {
+    "name": "e_drum",
+    "equation": "e_drum_t = decay * e_drum_t_minus_1 + gas - pressure / pressure_scale",
+    "best_decay": 0.99,
+    "best_pressure_scale": 159.6
+  },
+  "best_config": {
+    "decay": 0.99,
+    "pressure_scale": 159.6,
+    "include_gas": false
+  },
+  "summary": {
+    "mean_r2": 0.23354847124969233,
+    "weighted_r2": 0.23117414596630093,
+    "total_samples": 9229
+  },
+  "phases": {
+    "drying": {
+      "model_version": "v2.2",
+      "target": "bt_delta",
+      "feature_names": [
+        "intercept",
+        "e_drum",
+        "et_delta",
+        "neg_bt_level",
+        "neg_ror",
+        "neg_pressure_direct"
+      ],
+      "rmse": 1.8238059170508494,
+      "mae": 1.2015560436592205,
+      "r2": 0.11268814453183129,
+      "n_samples": 3751,
+      "intercept": -0.9516182968762957,
+      "e_drum": 5e-324,
+      "et_delta": 0.018821015363099998,
+      "neg_bt_level": 2.460777638127082e-27,
+      "neg_ror": 2.0851622210705268e-30,
+      "neg_pressure_direct": 1.1016913426495926e-18,
+      "phase": "drying",
+      "status": "ok",
+      "n_roasts": 12,
+      "latent_decay": 0.99,
+      "pressure_scale": 159.6,
+      "include_gas": false
+    },
+    "maillard": {
+      "model_version": "v2.2",
+      "target": "bt_delta",
+      "feature_names": [
+        "intercept",
+        "e_drum",
+        "et_delta",
+        "neg_bt_level",
+        "neg_ror",
+        "neg_pressure_direct"
+      ],
+      "rmse": 0.11740053100007619,
+      "mae": 0.09646676900540428,
+      "r2": 0.3489611113874048,
+      "n_samples": 3652,
+      "intercept": 0.37933682718318523,
+      "e_drum": 1.3133713656588417e-22,
+      "et_delta": 0.00500327440884447,
+      "neg_bt_level": 0.24315791945096207,
+      "neg_ror": 0.007359545065317537,
+      "neg_pressure_direct": 5.725454000253132e-23,
+      "phase": "maillard",
+      "status": "ok",
+      "n_roasts": 12,
+      "latent_decay": 0.99,
+      "pressure_scale": 159.6,
+      "include_gas": false
+    },
+    "development": {
+      "model_version": "v2.2",
+      "target": "bt_delta",
+      "feature_names": [
+        "intercept",
+        "e_drum",
+        "et_delta",
+        "neg_bt_level",
+        "neg_ror",
+        "neg_pressure_direct"
+      ],
+      "rmse": 0.10438670386352925,
+      "mae": 0.08472415487166277,
+      "r2": 0.23899615782984085,
+      "n_samples": 1826,
+      "intercept": 0.209118864754195,
+      "e_drum": 0.061102099548535495,
+      "et_delta": 0.002323430929206731,
+      "neg_bt_level": 2.9095936935114023e-21,
+      "neg_ror": 0.006725824865804875,
+      "neg_pressure_direct": 1.836038494814393e-17,
+      "phase": "development",
+      "status": "ok",
+      "n_roasts": 12,
+      "latent_decay": 0.99,
+      "pressure_scale": 159.6,
+      "include_gas": false
+    }
+  },
+  "hyperparameter_search": {
+    "include_gas=False|decay=0.920|pressure_scale=79.800": {
+      "mean_r2": 0.23073541311990023,
+      "weighted_r2": 0.2295044165876974,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.920|pressure_scale=159.600": {
+      "mean_r2": 0.23112080905876056,
+      "weighted_r2": 0.22973317365272833,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.920|pressure_scale=239.400": {
+      "mean_r2": 0.2312829400743617,
+      "weighted_r2": 0.22982940874900096,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.940|pressure_scale=79.800": {
+      "mean_r2": 0.23100061622053422,
+      "weighted_r2": 0.22966183153898176,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.940|pressure_scale=159.600": {
+      "mean_r2": 0.23143134134616553,
+      "weighted_r2": 0.22991749436682574,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.940|pressure_scale=239.400": {
+      "mean_r2": 0.23160371497802637,
+      "weighted_r2": 0.230019809108983,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.960|pressure_scale=79.800": {
+      "mean_r2": 0.23146589960838757,
+      "weighted_r2": 0.22993800689911403,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.960|pressure_scale=159.600": {
+      "mean_r2": 0.2319521649204167,
+      "weighted_r2": 0.2302266363691823,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.960|pressure_scale=239.400": {
+      "mean_r2": 0.23213107148701442,
+      "weighted_r2": 0.23033282882468759,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.970|pressure_scale=79.800": {
+      "mean_r2": 0.23184654737202548,
+      "weighted_r2": 0.23016394561936634,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.970|pressure_scale=159.600": {
+      "mean_r2": 0.23235813437888628,
+      "weighted_r2": 0.23046760512999045,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.970|pressure_scale=239.400": {
+      "mean_r2": 0.2325326262879832,
+      "weighted_r2": 0.230571177204762,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.980|pressure_scale=79.800": {
+      "mean_r2": 0.23241329843541217,
+      "weighted_r2": 0.23050034851515488,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.980|pressure_scale=159.600": {
+      "mean_r2": 0.23293160302951132,
+      "weighted_r2": 0.23080799534216237,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.980|pressure_scale=239.400": {
+      "mean_r2": 0.23307883858629266,
+      "weighted_r2": 0.23089538903379433,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.985|pressure_scale=79.800": {
+      "mean_r2": 0.23280182017320503,
+      "weighted_r2": 0.23073096094115758,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.985|pressure_scale=159.600": {
+      "mean_r2": 0.2332901653178934,
+      "weighted_r2": 0.23102082492454185,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.985|pressure_scale=239.400": {
+      "mean_r2": 0.23339007415354654,
+      "weighted_r2": 0.2310801271893276,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.990|pressure_scale=79.800": {
+      "mean_r2": 0.2331871431459841,
+      "weighted_r2": 0.2309596746961618,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.990|pressure_scale=159.600": {
+      "mean_r2": 0.23354847124969233,
+      "weighted_r2": 0.23117414596630093,
+      "total_samples": 9229
+    },
+    "include_gas=False|decay=0.990|pressure_scale=239.400": {
+      "mean_r2": 0.23353070558378053,
+      "weighted_r2": 0.23116360091061267,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.920|pressure_scale=79.800": {
+      "mean_r2": 0.2308790822796871,
+      "weighted_r2": 0.22958969339530852,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.920|pressure_scale=159.600": {
+      "mean_r2": 0.23112080905717572,
+      "weighted_r2": 0.22973317365179163,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.920|pressure_scale=239.400": {
+      "mean_r2": 0.23128294007478004,
+      "weighted_r2": 0.2298294087492493,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.940|pressure_scale=79.800": {
+      "mean_r2": 0.23107609254906417,
+      "weighted_r2": 0.22970663155281723,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.940|pressure_scale=159.600": {
+      "mean_r2": 0.23143134134617435,
+      "weighted_r2": 0.22991749436683495,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.940|pressure_scale=239.400": {
+      "mean_r2": 0.23160371497855226,
+      "weighted_r2": 0.23001980910929526,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.960|pressure_scale=79.800": {
+      "mean_r2": 0.23147902327517675,
+      "weighted_r2": 0.22994579663220224,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.960|pressure_scale=159.600": {
+      "mean_r2": 0.23195216492042817,
+      "weighted_r2": 0.230226636369193,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.960|pressure_scale=239.400": {
+      "mean_r2": 0.2321310714881568,
+      "weighted_r2": 0.23033282882530712,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.970|pressure_scale=79.800": {
+      "mean_r2": 0.23184655598819512,
+      "weighted_r2": 0.23016395073361243,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.970|pressure_scale=159.600": {
+      "mean_r2": 0.23235813437892536,
+      "weighted_r2": 0.2304676051300173,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.970|pressure_scale=239.400": {
+      "mean_r2": 0.23253262628798319,
+      "weighted_r2": 0.23057117720476195,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.980|pressure_scale=79.800": {
+      "mean_r2": 0.23241329843531677,
+      "weighted_r2": 0.23050034851509826,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.980|pressure_scale=159.600": {
+      "mean_r2": 0.23293160302977078,
+      "weighted_r2": 0.23080799534231886,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.980|pressure_scale=239.400": {
+      "mean_r2": 0.23307883858512432,
+      "weighted_r2": 0.23089538903302245,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.985|pressure_scale=79.800": {
+      "mean_r2": 0.2328018201732258,
+      "weighted_r2": 0.23073096094117537,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.985|pressure_scale=159.600": {
+      "mean_r2": 0.23329016531993615,
+      "weighted_r2": 0.2310208249256747,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.985|pressure_scale=239.400": {
+      "mean_r2": 0.23339007415351257,
+      "weighted_r2": 0.2310801271892873,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.990|pressure_scale=79.800": {
+      "mean_r2": 0.23318714314670316,
+      "weighted_r2": 0.23095967469658865,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.990|pressure_scale=159.600": {
+      "mean_r2": 0.2335484712496743,
+      "weighted_r2": 0.2311741459662789,
+      "total_samples": 9229
+    },
+    "include_gas=True|decay=0.990|pressure_scale=239.400": {
+      "mean_r2": 0.23353070558405656,
+      "weighted_r2": 0.2311636009108824,
+      "total_samples": 9229
+    }
+  }
+}

@@ -32,6 +32,71 @@ The system is being developed as a **hybrid physics + ML architecture** rather t
 
 Project stage: **Phase-1 Prototype Architecture**
 
+## 20260313
+Current phase:
+Data spine complete, baseline physics calibration complete.
+
+Latest completed milestone:
+RoastOS Physics Calibration V1 baseline completed successfully.
+
+What now works end-to-end:
+Cropster Excel import -> processed parquet tables -> calibration dataset -> bounded physics calibration -> saved model artifact.
+
+Current next objective:
+Build V1.1 phase-specific calibration.
+
+Current blocker:
+No blocker. Pipeline is operational.
+
+## Current Active Issues
+
+- Global physics calibration V1 explains only a small part of BT step variance.
+- V1 selected lagged ET-BT as dominant predictor and set gas, pressure, and RoR coefficients to zero.
+- This suggests current one-step linear formulation is too compressed for richer machine-physics identification.
+
+## Physics Calibration Status
+
+### V1 Baseline
+Model type:
+Bounded linear one-step BT delta model.
+
+Target:
+bt_delta = bt_next - bt_c
+
+Features used:
+- intercept
+- gas
+- gas_lag1
+- et_delta
+- et_delta_lag1
+- neg_pressure
+- neg_pressure_lag1
+- neg_ror
+
+Training dataset:
+- 6164 rows loaded
+- 6156 usable training rows after dropping missing lagged rows
+- 8 roasts
+
+V1 result:
+- intercept = -0.322164
+- gas = 0
+- gas_lag1 = 0
+- et_delta = 0
+- et_delta_lag1 = 0.011820
+- neg_pressure = 0
+- neg_pressure_lag1 = 0
+- neg_ror = 0
+
+Diagnostics:
+- RMSE = 1.284449
+- MAE = 0.642282
+- R² = 0.060771
+
+Interpretation:
+V1 behaves as a minimal lagged thermal-response model, dominated by lagged ET-BT.
+
+## INITIAL ENTRY TEMPLATE
 The system currently includes:
 
 • Roast data ingestion  
@@ -601,21 +666,24 @@ orchestrator/
 
 # 9. Current Active Issues
 
-Dataset ingestion still unstable due to config resolution problems.
 
-Config loading occasionally returns empty section list.
-
-Cropster importer requires robustness improvements.
+- Global physics calibration V1 explains only a small part of BT step variance.
+- V1 selected lagged ET-BT as dominant predictor and set gas, pressure, and RoR coefficients to zero.
+- This suggests current one-step linear formulation is too compressed for richer machine-physics identification.
 
 ---
 
 # 10. Current Priorities
 
-1. Stabilize Cropster data ingestion.
-2. Build reliable training dataset.
-3. Improve physics calibration pipeline.
-4. Integrate ML flavour model into live system.
-5. Improve crack dynamics in twin model.
+## Current Priorities
+
+Improve physics calibration pipeline.
+1. Build V1.1 phase-specific calibration (drying / maillard / development).
+2. Compare coefficients and fit quality by phase.
+3. Determine whether gas / pressure effects appear when calibration is phase-separated.
+4. Use V1.1 findings to design V2 richer thermal-memory / drum-energy calibration.
+5. Integrate ML flavour model into live system.
+6. Improve crack dynamics in twin model.
 
 ---
 

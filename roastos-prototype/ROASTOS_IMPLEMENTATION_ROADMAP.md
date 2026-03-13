@@ -50,6 +50,15 @@ Instead:
 
 ## 4. Roadmap Table
 
+Current status:
+Global V1 bounded calibration completed successfully; result dominated by lagged ET-BT with low explanatory power.
+
+Concrete next coding step:
+Implement V1.1 phase-specific calibration by fitting separate bounded models for drying, maillard, and development.
+
+Success criterion:
+Phase-separated models produce more informative coefficients and/or better diagnostics than the global V1 baseline.
+
 | Layer / Component | Current Status | Target Model Type | Keep as Hardcoded Prior | Replace with Learned Model | Hybrid Recommended | Concrete Next Coding Step | Dependencies | Success Criterion | Priority |
 |---|---|---|---|---|---|---|---|---|---|
 | **Cropster import** (`src/roastos/data/cropster_import.py`) | Real architecture exists but importer still unstable; config resolution issues remain | Engineered ingestion layer | Yes | No | No | Make config resolution independent of cwd; add schema validation; harden roast/QC parsing paths | None | Import works reproducibly across expected folders and configs; no empty config section issue | P1 |
@@ -114,6 +123,9 @@ Exit criteria:
 Goal:
 
 Make the twin and estimator materially more trustworthy.
+
+Current immediate sub-step:
+V1.1 phase-specific calibration before introducing latent drum-energy state.
 
 Main work:
 

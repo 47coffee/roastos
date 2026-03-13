@@ -19,6 +19,10 @@ This file is not a detailed implementation spec.
 It is the bridge between concept, codebase, and system evolution.
 
 ---
+## Current architectural focus
+Primary work area: physics calibration
+Most recently completed layer: data spine + baseline physics calibration
+Next layer to industrialize: phase-specific calibration
 
 ## 2. System Goal
 
@@ -96,6 +100,7 @@ Logger
     ↓
 Next control step
 
+
 ## 5. Architectural Layers
 ### Layer 1 – Data Ingestion Layer
 
@@ -160,20 +165,28 @@ src/roastos/data/physics_calibration.py
 #### Inputs:
 
 processed roast data
-
 machine signals
-
 roast event alignment
 
 #### Outputs:
 
 calibrated thermal coefficients
-
 machine-response parameters
 
 #### Current status:
 
-bounded least-squares style calibration exists
+- bounded least-squares calibration pipeline operational
+- calibration dataset successfully built from Cropster imports
+- baseline global calibration completed
+- V1 global fit mostly selects lagged ET-BT as dominant predictor
+
+Current limitation:
+- global linear one-step model does not recover richer gas / pressure effects
+- likely due to phase mixing, collinearity, and missing latent thermal memory
+
+Next architectural step:
+- split calibration by roast phase
+- compare phase-specific coefficients before introducing richer latent drum-energy state
 
 #### Prototype limitations:
 
@@ -919,6 +932,9 @@ benchmark suite
 validation dashboard support
 
 ## 6. Current Reality: What Is Real vs Prototype
+
+- end-to-end baseline physics calibration pipeline
+
 Architecturally real already
 
 These are solid and correctly decomposed:
@@ -941,9 +957,13 @@ advisor / alerts / logger separation
 
 orchestrator loop
 
-Still provisional
+### Still provisional
 
 These areas still need heavy refinement:
+
+- phase-specific thermal dynamics
+- latent drum-energy memory
+- richer machine-response identification
 
 exact twin equations
 

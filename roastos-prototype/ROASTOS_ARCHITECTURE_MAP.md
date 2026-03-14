@@ -20,12 +20,10 @@ It is the bridge between concept, codebase, and system evolution.
 
 ---
 ## Current architectural focus
-Primary work area: calibration -> simulator transition
-Most recently completed layer: phase-specific + V2-series physics calibration
-Next layer to industrialize: RoastOS roaster simulator / digital twin forward simulation
-Primary work area: physics calibration
-Most recently completed layer: data spine + baseline physics calibration
-Next layer to industrialize: phase-specific calibration
+Primary work area: simulator baseline -> robustness -> phase-aware MPC
+Most recently completed layer: replay-stable coupled simulator baseline (**V3.0**)
+Next layer to industrialize: **V3.1 replay robustness improvements + configuration layer**
+Next major milestone after that: **V4.0 phase-aware MPC controller**
 
 ## 2. System Goal
 
@@ -183,26 +181,30 @@ machine-response parameters
 
 - bounded least-squares calibration pipeline operational
 - calibration dataset successfully built from Cropster imports
-- baseline global calibration completed
-- V1.1 phase-specific calibration completed
-- V2 / V2.1 / V2.2 richer calibration experiments completed
-- calibration dataset expanded from 8 to 16 roasts
+- baseline V1, V1.1, V2, V2.1, and V2.2 completed historically
+- V3.0 baseline now frozen as:
+  - phase-specific BT calibration
+  - coupled ET calibration
+  - latent `e_drum` state with stored normalization stats
+  - replay-stable simulator artifact `artifacts/models/physics_model_v3_0.json`
 
 Current findings:
-- global V1 was dominated by lagged ET-BT
-- phase separation improved interpretability materially
-- direct gas terms still do not survive once ET-derived variables are present
-- current BT level behaves as a strong bean-state proxy, especially in Maillard
-- latent drum-energy signal survives weakly, mainly in development
+- drying BT collapses mostly to ET-BT gradient, which is physically sensible
+- direct gas terms do not survive in BT once ET-derived variables are present
+- BT level behaves as a bean-state proxy mainly in Maillard
+- RoR acts as damping / momentum term
+- latent drum-energy survives mainly in development
+- ET dynamics need more memory/inertia than BT dynamics and are now calibrated separately
 
 Current limitation:
-- one-step regression calibration is now reaching diminishing returns
-- current model is useful for simulator design but is not yet a full causal digital twin
+- replay is stable but not uniform across all roasts
+- ET replay can still drift in late development on some roasts
+- PR-0180 remains a benchmark failure / stress-test roast
 
 Next architectural step:
-- freeze the current calibrated structure
-- build RoastOS roaster simulator / forward digital twin
-- validate multi-step trajectory quality on historical roasts
+- keep V3.0 frozen as the simulator baseline
+- build V3.1 replay robustness improvements
+- then build V4.0 phase-aware MPC on top of the frozen baseline
 
 #### Prototype limitations:
 
@@ -320,9 +322,36 @@ Simulate the roast forward from state + control.
 
 #### Main files:
 
-src/roastos/twin.py
+src/roastos/simulator/calibrated_simulator.py
+src/roastos/simulator/replay_validator.py
+src/roastos/simulator/replay_simulator_demo.py
+src/roastos/simulator/sim_loader.py
+src/roastos/simulator/sim_types.py
 
-src/roastos/dynamics.py
+#### Current status:
+
+V3.0 baseline completed.
+
+- coupled replay simulator exists
+- calibrated latent state is reconstructed at runtime
+- ET model is loaded and used in the loop
+- BT model is loaded and used in the loop
+- replay validation works across multiple roasts
+- phase-forced replay benchmark established
+
+Current model chain:
+controls -> latent `e_drum` / ET -> BT -> RoR
+
+What remains provisional:
+- open-loop phase inference
+- replay robustness on difficult roasts
+- ET late-development stability on all roasts
+- RoR replay as a strict metric
+
+Next step:
+- V3.1 replay robustness improvements
+- then V4.0 phase-aware MPC
+
 
 #### Inputs:
 
@@ -676,15 +705,19 @@ Outputs:
 
 recommended control action sequence
 
-Current status:
+#### Current status:
 
-nonlinear MPC exists
+- legacy nonlinear MPC scaffold exists in prototype form
+- not yet re-coupled to the new V3 simulator baseline
 
-move blocking exists
+#### Next step:
 
-control penalties exist
-
-solver fallback exists
+V4.0 phase-aware MPC controller:
+- use V3.0 simulator as plant model
+- optimize gas + pressure
+- keep phase-aware rollout
+- begin with BT/ET tracking + move penalties
+- build clean objective / constraints / horizon interface
 
 Current optimization logic:
 
@@ -1056,35 +1089,27 @@ Not purely handcoded.
 Not purely black-box ML.
 
 ## 8. Best Next Technical Priorities
+## 8. Best Next Technical Priorities
 
-Apply the dataset-builder missing-data fix and regenerate the calibration dataset
+1. **V3.1 replay robustness improvements**
+   - improve ET replay robustness on difficult roasts
+   - add config layer so constants and paths are no longer hardcoded across modules
+   - add batch benchmark support across multiple roasts
+   - keep PR-0180 as explicit stress test
 
-Freeze the current calibration structure as the current best physics prior
+2. **V4.0 phase-aware MPC controller**
+   - build MPC around V3.0 simulator
+   - use phase-aware rollout
+   - define first clean objective and control-penalty structure
+   - keep simulator frozen while controller baseline is built
 
-Build the RoastOS roaster simulator / digital twin forward simulator
+3. Later:
+   - estimator re-coupling
+   - residual correction
+   - flavour-model integration
+   - autonomous phase inference
 
-Validate multi-step simulated trajectories against historical roasts
-
-Then continue with:
-- residual correction
-- observation refinement
-- flavour-model integration
-- MPC re-coupling to the calibrated simulator
-
-Stabilize Cropster import and config loading
-
-Build reliable processed dataset
-
-Improve calibration richness
-
-Connect flavour ML stack to runtime system
-
-Improve crack and development dynamics
-
-Add uncertainty and confidence handling
-
-Generalize machine abstraction
-
+   
 ## 9. How to Use This File
 
 Use this file when:

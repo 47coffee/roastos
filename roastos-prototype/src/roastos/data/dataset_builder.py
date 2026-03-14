@@ -152,26 +152,38 @@ def add_calibration_features(dataset: pd.DataFrame) -> pd.DataFrame:
     dataset = dataset.copy()
     dataset = dataset.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
 
+    # BT next-step target
     dataset["bt_next"] = dataset.groupby("roast_id")["bt_c"].shift(-1)
     dataset["bt_delta"] = dataset["bt_next"] - dataset["bt_c"]
 
+    # ET next-step target
+    dataset["et_next"] = dataset.groupby("roast_id")["et_c"].shift(-1)
+    dataset["et_step"] = dataset["et_next"] - dataset["et_c"]
+
+    # Core thermal gap
     dataset["et_delta"] = dataset["et_c"] - dataset["bt_c"]
+
+    # Lags
     dataset["gas_lag1"] = dataset.groupby("roast_id")["gas"].shift(1)
     dataset["pressure_lag1"] = dataset.groupby("roast_id")["pressure"].shift(1)
     dataset["et_delta_lag1"] = dataset.groupby("roast_id")["et_delta"].shift(1)
+    dataset["et_c_lag1"] = dataset.groupby("roast_id")["et_c"].shift(1)
 
+    # Step changes
     dataset["gas_delta"] = dataset["gas"] - dataset["gas_lag1"]
     dataset["pressure_delta"] = dataset["pressure"] - dataset["pressure_lag1"]
+
+    # Normalized thermal state
     dataset["bt_c_norm"] = dataset["bt_c"] / 200.0
+    dataset["et_c_norm"] = dataset["et_c"] / 250.0
 
     roast_duration = dataset.groupby("roast_id")["time_s"].transform("max")
     dataset["time_frac"] = dataset["time_s"] / roast_duration.replace(0, pd.NA)
 
-    # Keep only rows where the next-step target exists.
-    dataset = dataset.dropna(subset=["bt_next"]).copy()
+    # Keep only rows where next-step targets exist
+    dataset = dataset.dropna(subset=["bt_next", "et_next"]).copy()
 
     return dataset
-
 
 def build_calibration_dataset(processed_folder: str | Path = DEFAULT_PROCESSED_FOLDER):
     roast_sessions, roast_timeseries, qc_sessions = load_processed_data(processed_folder)

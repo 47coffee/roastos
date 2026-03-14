@@ -30,6 +30,102 @@ The system is being developed as a **hybrid physics + ML architecture** rather t
 
 # 2. Current Development Status
 
+Project stage: **V3.0 replay-stable simulator baseline**
+
+## 20260314
+Current phase:
+Data spine complete, calibration complete enough for simulator baseline, coupled replay simulator validated across multiple roasts.
+
+Latest completed milestone:
+**RoastOS V3.0 replay-stable coupled simulator baseline** frozen.
+
+What now works end-to-end:
+Cropster Excel import -> processed parquet tables -> calibration dataset -> phase-specific BT calibration -> coupled ET calibration -> latent-state normalization -> saved simulator artifact -> multi-roast replay validation.
+
+Current baseline artifact:
+`artifacts/models/physics_model_v3_0.json`
+
+Current strategic decision:
+V3.0 is frozen as the baseline plant model for controller development. Replay work continues only as robustness improvement, not as the main blocker.
+
+Current next objectives:
+1. **V3.1 replay robustness improvements**
+2. **introduce central config file / config layer**
+3. **V4.0 phase-aware MPC controller**
+
+Current blocker:
+No hard blocker. The simulator is stable enough to move forward.
+
+## Current Active Issues
+
+- Replay is stable but not uniformly strong across all roasts.
+- Main weakness is late-development ET drift on some roasts.
+- `PR-0180` remains a benchmark failure / stress-test roast.
+- Phase is still teacher-forced in the main replay benchmark.
+- Constants and paths are still too distributed across modules and should move into a shared config layer.
+
+## V3.0 Replay Benchmark
+
+Replay tests were run with:
+- teacher-forced phase = True
+- teacher-forced ET = False
+- teacher-forced RoR = False
+
+Representative results:
+
+| Roast ID | BT RMSE | ET RMSE | Terminal BT Error | Terminal ET Error | Notes |
+|---|---:|---:|---:|---:|---|
+| PR-0173 | 36.57 | 17.87 | -0.37 | -0.55 | good baseline replay |
+| PR-0181 | 31.62 | 17.51 | 4.33 | 2.00 | good baseline replay |
+| PR-0182 | 34.02 | 25.22 | -22.16 | -24.11 | weak late development ET replay |
+| PR-0186 | 29.98 | 19.79 | -14.71 | -17.31 | acceptable but weak late ET replay |
+| PR-0180 | 58.95 | 49.80 | 37.56 | 35.49 | outlier / failure benchmark |
+
+Interpretation:
+- V3.0 is good enough to use as the baseline simulator for control development.
+- Replay is acceptable on most benchmark roasts.
+- Main remaining weakness is development-phase ET robustness.
+- PR-0180 is retained explicitly as a stress-test roast.
+
+## Current priorities
+
+1. **V3.1 replay robustness improvements**
+   - improve difficult-roast replay behavior
+   - add batch replay benchmark support
+   - keep PR-0180 as explicit stress case
+
+2. **Central config layer**
+   - move paths and shared constants out of individual files
+   - centralize calibration artifact path, dataset path, replay defaults, and simulator constants
+
+3. **V4.0 phase-aware MPC controller**
+   - use V3.0 simulator as the plant model
+   - keep phase-aware rollout
+   - begin with gas + pressure control
+   - use BT / ET tracking + move penalties as first objective
+
+## Immediate next chat handoff
+
+The next chat should start from this exact state:
+
+### Closed
+- V3.0 replay-stable coupled simulator baseline
+
+### Next tasks
+1. **V3.1 replay robustness improvements**
+   - improve ET replay on difficult roasts
+   - introduce project-wide config file / config layer
+   - remove remaining hardcoded constants and file paths
+
+2. **V4.0 phase-aware MPC controller**
+   - design first clean MPC file plan
+   - define objective / constraints / rollout interface
+   - couple MPC to the frozen V3.0 simulator baseline
+
+### Important strategic rule
+Do not keep expanding replay calibration indefinitely before MPC.
+V3.0 is already good enough to serve as the plant model baseline.
+
 Project stage: **Phase-1 Prototype Architecture**
 
 ## 20260313

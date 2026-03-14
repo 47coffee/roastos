@@ -51,19 +51,22 @@ Instead:
 ## 4. Roadmap Table
 
 Current status:
-V1, V1.1, V2, V2.1, and V2.2 physics calibration completed. Current best interpretation is that BT dynamics are primarily explained by ET-BT gradient, bean-state proxy (BT level), RoR damping, and a small latent machine-momentum term.
+- V1, V1.1, V2, V2.1, and V2.2 calibration completed historically
+- V3.0 replay-stable coupled simulator baseline completed and frozen
+- V3.0 validated on multiple roasts with one retained stress-test failure case (`PR-0180`)
 
-Global V1 bounded calibration completed successfully; result dominated by lagged ET-BT with low explanatory power.
-
+Current best interpretation:
+- BT dynamics are primarily explained by ET-BT gradient, bean-state proxy (BT level), RoR damping, and a small latent machine-momentum term
+- ET dynamics require their own coupled model and lag structure
+- direct gas is mainly expressed through ET, not directly through BT
 
 Concrete next coding step:
-Implement V1.1 phase-specific calibration by fitting separate bounded models for drying, maillard, and development.
-Build the RoastOS Roaster Simulator / digital twin forward simulator from the calibrated physics structure.
-
+- **V3.1 replay robustness improvements + central config layer**
+- **V4.0 phase-aware MPC controller**
 
 Success criterion:
-Phase-separated models produce more informative coefficients and/or better diagnostics than the global V1 baseline.
-Starting from a historical roast state, the simulator can roll forward a plausible BT / ET / RoR trajectory over a short horizon and behave consistently under control perturbations.
+- V3.1 improves robustness and removes hardcoded project constants / paths
+- V4.0 produces a working phase-aware predictive controller using V3.0 as plant model
 
 | Layer / Component | Current Status | Target Model Type | Keep as Hardcoded Prior | Replace with Learned Model | Hybrid Recommended | Concrete Next Coding Step | Dependencies | Success Criterion | Priority |
 |---|---|---|---|---|---|---|---|---|---|
@@ -92,152 +95,128 @@ Starting from a historical roast state, the simulator can roll forward a plausib
 | **Gateway abstraction** (`gateway/*`) | Dummy Dutch Master gateway exists | Engineered machine interface | Yes | No | No | Preserve abstraction; define real-machine adapter interface and latency model hooks | None | Runtime is machine-agnostic above gateway layer | P2 |
 | **Machine translation layers** | Conceptual / future | Hybrid machine adaptation layer | Partly | No | Yes | Define normalization layer for Probat / Giesen / Dutch Master controls and observations | Gateway + observation/twin cleanup | Same runtime logic can run across machines with machine-specific adapters | P2 |
 | **Orchestrator** (`src/roastos/orchestrator.py`) | Simulated live loop exists | Engineered orchestration layer with hybrid internals | Yes | No | Light hybrid | Add pluggable runtime modes: simulation, replay, live-test | Replay harness + logging improvements | Same orchestrator can run test, replay, and future live modes | P2 |
+| **Config layer** (new) | Missing | Engineered configuration backbone | Yes | No | No | Introduce central config file / config loader for paths, artifact names, replay defaults, simulator constants | None | Individual modules stop hardcoding key paths/constants | P1 |
 
+And update these table rows conceptually:
+
+Physics calibration → current status should say V3.0 baseline frozen
+
+Simulator / digital twin → current status should say V3.0 replay-stable baseline complete
+
+Replay / experiment harness → next step should become batch replay benchmark runner
+
+MPC optimization → next step should explicitly become V4.0 phase-aware MPC around V3.0 simulator
 ---
 
 ## 5. Recommended Development Phases
 
-### Phase A – Stabilize the Data Spine
+## 5. Recommended Development Phases
 
+### Phase A – Freeze and package V3.0
 Goal:
-
-Make RoastOS data ingestion and dataset generation reliable.
+Lock the current replay-stable simulator baseline and preserve reproducibility.
 
 Main work:
-
-1. Fix config resolution in importer
-2. Harden roast/QC parsing
-3. Standardize processed dataset outputs
-4. Expand runtime logging
-5. Build replay harness
-
-Why first:
-
-Without reliable ingestion, telemetry, and replay, all learned layers remain weak or misleading.
+1. Save V3.0 artifact
+2. Save multi-roast replay benchmark
+3. Update context/changelog/architecture docs
+4. Keep failure-case roasts explicitly logged
 
 Exit criteria:
-
-- importer works reproducibly
-- processed dataset is generated cleanly
-- replay tools can inspect historical roasts
-- runtime data is rich enough for learning
+- V3.0 artifact frozen
+- benchmark table saved
+- docs updated
+- next work can proceed without ambiguity
 
 ---
 
-### Phase B – Strengthen the Hybrid Physical Core
+### Phase B – V3.1 Replay Robustness + Config Layer
 Goal:
-
-Turn the current calibrated one-step physics interpretation into a forward-simulation digital twin.
+Improve robustness without reopening the entire simulator architecture.
 
 Main work:
-
-1. Apply dataset-builder missing-data fix
-2. Freeze current calibrated model family
-3. Build roaster simulator state transition function
-4. Build multi-step rollout / replay validation harness
-5. Compare simulator predictions against historical roasts
-6. Only then refine residual corrections / observation model / estimator
-
-Why second:
-
-This improves both control quality and feature quality for flavour prediction.
+1. Introduce central config file / config loader
+2. Remove repeated hardcoded paths/constants across simulator/calibration/replay modules
+3. Add batch replay benchmark runner
+4. Investigate outlier replay cases, especially PR-0180
+5. Make only targeted replay improvements if benchmark shows clear wins
 
 Exit criteria:
-
-- hybrid twin predicts roast evolution better than prior-only twin
-- estimator is more stable and more informative
-- observation mismatch is reduced
+- config layer exists and is in active use
+- replay benchmark can be run across multiple roasts automatically
+- failure cases are easier to inspect
+- no major simulator architecture rewrite required
 
 ---
 
-### Phase C – Move Flavour from Handcrafted to Trained Hybrid Model
-
+### Phase C – V4.0 Phase-Aware MPC Controller
 Goal:
-
-Turn flavour prediction into a real supervised learning component while preserving interpretability.
+Build the first clean predictive controller on top of the frozen V3.0 simulator.
 
 Main work:
-
-1. Train baseline flavour model
-2. Keep current flavour logic as prior / fallback
-3. Compare handcrafted vs learned vs hybrid flavour prediction
-4. Add roaster-style adaptation
-5. Add prediction confidence
-
-Why third:
-
-This is the biggest leap from “smart prototype” to “data-improving system.”
+1. Define MPC state / target / constraints interface
+2. Use V3.0 simulator as plant model
+3. Keep phase-aware rollout
+4. Optimize gas + pressure
+5. Start with BT / ET tracking + move penalties
+6. Add clean fallback behavior and safe bounds
 
 Exit criteria:
-
-- learned flavour model outperforms prior-only model
-- hybrid flavour model is stable and interpretable
-- style context improves predictive quality
+- MPC can roll out candidate trajectories through V3.0
+- MPC returns feasible gas/pressure recommendations
+- objective is interpretable and tunable
+- controller is stable on replay scenarios
 
 ---
 
-### Phase D – Industrialize Decision Quality
-
+### Phase D – Post-V4 Refinement
 Goal:
-
-Improve decision quality in closed loop.
+Improve runtime realism and control quality after the first MPC baseline exists.
 
 Main work:
+1. estimator re-coupling
+2. autonomous phase inference
+3. replay robustness improvements beyond V3.1
+4. residual correction / disturbance learning
+5. flavour-model integration into terminal control logic
 
-1. Refactor MPC objective weights
-2. Add crack-zone constraints
-3. Calibrate alert thresholds
-4. Improve controller trajectory scoring
-5. Generalize across machines
 
-Exit criteria:
-
-- better recommended actions in replay scenarios
-- clearer and more trustworthy advice
-- machine adaptation path becomes explicit
-
----
 
 ## 6. Immediate Next Four Tasks
 
-If development starts now, the strongest next sequence is:
+## 6. Immediate Next Four Tasks
 
 ### Task 1
-Fix importer/config loading fully.
+Create central config layer.
 
 Deliverable:
-
-- importer works regardless of working directory
-- config sections always load correctly
-- clear failure messages when config is missing or malformed
+- config file for paths and shared constants
+- config loader utility
+- simulator/calibration/replay modules reading from config instead of hardcoded paths
 
 ### Task 2
-Create a clean processed dataset and training table.
+Create batch replay benchmark runner.
 
 Deliverable:
-
-- per-roast records
-- per-timeseries records
-- QC-linked outputs
-- stable IDs and train/validation split
+- run multiple roast IDs in one command
+- save per-roast metrics table
+- make V3.1 robustness work evidence-driven
 
 ### Task 3
-Add hybrid twin residual-learning interface.
+Define V4 MPC architecture.
 
 Deliverable:
-
-- clean interface for prior model output
-- optional residual correction block
-- evaluation path for prior-only vs hybrid twin
+- file plan
+- state / target / constraint structure
+- first objective design
+- rollout coupling to V3.0 simulator
 
 ### Task 4
-Train first baseline flavour model and compare against handcrafted model.
+Implement first phase-aware MPC baseline.
 
 Deliverable:
-
-- validation report
-- feature importance / explainability output
-- clear benchmark against current `flavor_model.py`
+- working controller prototype using gas + pressure controls
+- replay-based sanity checks on several roasts
 
 ---
 

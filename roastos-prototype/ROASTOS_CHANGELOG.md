@@ -13,6 +13,71 @@ Only record:
 • calibration improvements  
 
 ---
+## 2026-03-14
+
+### V3.0 — Replay-stable coupled simulator baseline
+
+#### Work completed
+- Promoted the coupled simulator calibration package to **V3.0**.
+- Saved calibrated artifact as `artifacts/models/physics_model_v3_0.json`.
+- Added release metadata labeling V3.0 as the replay-stable simulator baseline.
+- Extended calibration to include:
+  - phase-specific BT transition models
+  - coupled ET transition models
+  - latent `e_drum` normalization stats (`raw_mean`, `raw_std`)
+- Updated simulator loading defaults to point to the V3.0 artifact.
+- Wired ET models into the runtime simulator loop.
+- Expanded simulator state to support ET replay memory:
+  - `et_prev`
+  - `prev_pressure`
+  - lag-aware ET replay features
+- Fixed replay validation robustness issues:
+  - optional `drum_speed`
+  - RoR fallback reconstruction for isolated missing first-row values
+  - roast filtering / index alignment bug in replay validator
+  - cleaner ET metric handling in teacher-forced ET mode
+
+#### Files modified
+- `src/roastos/data/physics_calibration.py`
+- `src/roastos/simulator/sim_types.py`
+- `src/roastos/simulator/sim_loader.py`
+- `src/roastos/simulator/calibrated_simulator.py`
+- `src/roastos/simulator/replay_validator.py`
+- `src/roastos/simulator/replay_simulator_demo.py`
+
+#### Replay benchmark setup
+Replay tests were run with:
+- teacher-forced phase = True
+- teacher-forced ET = False
+- teacher-forced RoR = False
+
+#### Replay benchmark summary
+
+| Roast ID | BT RMSE | ET RMSE | Terminal BT Error | Terminal ET Error | Notes |
+|---|---:|---:|---:|---:|---|
+| PR-0173 | 36.57 | 17.87 | -0.37 | -0.55 | good baseline replay |
+| PR-0181 | 31.62 | 17.51 | 4.33 | 2.00 | good baseline replay |
+| PR-0182 | 34.02 | 25.22 | -22.16 | -24.11 | weak late development ET replay |
+| PR-0186 | 29.98 | 19.79 | -14.71 | -17.31 | acceptable but weak late ET replay |
+| PR-0180 | 58.95 | 49.80 | 37.56 | 35.49 | outlier / failure benchmark |
+
+#### Interpretation
+- V3.0 is stable across multiple roasts and is good enough to serve as the baseline plant model for controller development.
+- Replay quality is acceptable on most benchmark roasts.
+- Main remaining weakness is late-development ET drift on some roasts.
+- PR-0180 is retained as a stress-test / failure-case roast for future robustness work.
+
+#### Strategic decision
+- **Close V3.0 now** as the replay-stable baseline.
+- Do not continue blocking on replay perfection before controller work.
+- Move next to:
+  1. **V3.1 replay robustness improvements + central config layer**
+  2. **V4.0 phase-aware MPC controller**
+
+#### Next step
+- add project-wide config file / config layer for paths and shared constants
+- improve replay robustness on outlier roasts
+- build phase-aware MPC controller on top of V3.0
 ## 2026-03-13 (continued)
 
 ### Work completed

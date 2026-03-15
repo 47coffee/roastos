@@ -28,6 +28,608 @@ The system is being developed as a **hybrid physics + ML architecture** rather t
 
 ---
 
+# RoastOS State Definition and Context Variables
+
+RoastOS distinguishes between three classes of variables:
+
+Measurements
+
+Dynamic roast state
+
+Roast context / initial conditions
+
+This separation allows the system to correctly represent roast physics while keeping the runtime state compact and estimable.
+
+Measurement Vector
+
+Sensor measurements are represented by:
+
+𝑍
+𝑡
+=
+[
+𝐵
+𝑇
+𝑡
+𝑚
+𝑒
+𝑎
+𝑠
+
+
+𝐸
+𝑇
+𝑡
+𝑚
+𝑒
+𝑎
+𝑠
+]
+Z
+t
+	​
+
+=[
+BT
+t
+meas
+	​
+
+ET
+t
+meas
+	​
+
+	​
+
+]
+
+Where:
+
+𝐵
+𝑇
+𝑡
+𝑚
+𝑒
+𝑎
+𝑠
+BT
+t
+meas
+	​
+
+ = measured bean temperature
+
+𝐸
+𝑇
+𝑡
+𝑚
+𝑒
+𝑎
+𝑠
+ET
+t
+meas
+	​
+
+ = measured environmental temperature
+
+Optional later additions may include a measured or derived RoR channel.
+
+Control Vector
+𝑈
+𝑡
+=
+[
+𝑔
+𝑎
+𝑠
+𝑡
+
+
+𝑝
+𝑟
+𝑒
+𝑠
+𝑠
+𝑢
+𝑟
+𝑒
+𝑡
+
+
+𝑑
+𝑟
+𝑢
+𝑚
+𝑡
+]
+U
+t
+	​
+
+=
+	​
+
+gas
+t
+	​
+
+pressure
+t
+	​
+
+drum
+t
+	​
+
+	​
+
+	​
+
+
+Where:
+
+𝑔
+𝑎
+𝑠
+𝑡
+gas
+t
+	​
+
+ = burner gas level
+
+𝑝
+𝑟
+𝑒
+𝑠
+𝑠
+𝑢
+𝑟
+𝑒
+𝑡
+pressure
+t
+	​
+
+ = drum pressure / airflow proxy
+
+𝑑
+𝑟
+𝑢
+𝑚
+𝑡
+drum
+t
+	​
+
+ = drum rotation speed
+
+Dynamic Roast State
+
+The RoastOS runtime state is defined as:
+
+𝑋
+𝑡
+=
+[
+𝐵
+𝑇
+𝑡
+
+
+𝐸
+𝑇
+𝑡
+
+
+𝑅
+𝑜
+𝑅
+𝑡
+
+
+𝐸
+𝑡
+𝑑
+𝑟
+𝑢
+𝑚
+
+
+𝑀
+𝑡
+
+
+𝑃
+𝑡
+𝑑
+𝑟
+𝑦
+
+
+𝑃
+𝑡
+𝑚
+𝑎
+𝑖
+
+
+𝑃
+𝑡
+𝑑
+𝑒
+𝑣
+]
+X
+t
+	​
+
+=
+	​
+
+BT
+t
+	​
+
+ET
+t
+	​
+
+RoR
+t
+	​
+
+E
+t
+drum
+	​
+
+M
+t
+	​
+
+P
+t
+dry
+	​
+
+P
+t
+mai
+	​
+
+P
+t
+dev
+	​
+
+	​
+
+	​
+
+
+Where:
+
+Variable	Meaning
+BT	estimated bean temperature
+ET	estimated environmental temperature
+RoR	filtered rate of rise
+
+𝐸
+𝑑
+𝑟
+𝑢
+𝑚
+E
+drum
+	latent machine thermal energy
+M	moisture / evaporation burden
+
+𝑃
+𝑑
+𝑟
+𝑦
+P
+dry
+	drying progress
+
+𝑃
+𝑚
+𝑎
+𝑖
+P
+mai
+	Maillard progress
+
+𝑃
+𝑑
+𝑒
+𝑣
+P
+dev
+	development progress
+
+This state represents the latent physical condition of the roast used by the digital twin and MPC.
+
+Roast Context / Initial Conditions
+
+Certain roast parameters are known at charge time and remain constant during the roast.
+
+These are represented as context variables:
+
+𝐶
+=
+[
+𝑊
+0
+
+
+𝑇
+0
+𝑠
+𝑡
+𝑎
+𝑟
+𝑡
+]
+C=[
+W
+0
+	​
+
+T
+0
+start
+	​
+
+	​
+
+]
+
+Where:
+
+Variable	Meaning
+
+𝑊
+0
+W
+0
+	​
+
+	start weight (charge mass of beans)
+
+𝑇
+0
+𝑠
+𝑡
+𝑎
+𝑟
+𝑡
+T
+0
+start
+	​
+
+	start temperature of beans at charge
+
+These values influence:
+
+thermal inertia
+
+early roast heating dynamics
+
+moisture evaporation behaviour
+
+predicted mass loss
+
+Context variables are not estimated by the Kalman filter but are used by the process model.
+
+Initial State Construction
+
+The initial latent state is computed from context and measurements:
+
+𝑋
+0
+=
+𝜙
+(
+𝐶
+,
+𝑍
+0
+)
+X
+0
+	​
+
+=ϕ(C,Z
+0
+	​
+
+)
+
+Example:
+
+𝐵
+𝑇
+0
+≈
+𝐵
+𝑇
+0
+𝑚
+𝑒
+𝑎
+𝑠
+BT
+0
+	​
+
+≈BT
+0
+meas
+	​
+
+
+𝐸
+𝑇
+0
+≈
+𝐸
+𝑇
+0
+𝑚
+𝑒
+𝑎
+𝑠
+ET
+0
+	​
+
+≈ET
+0
+meas
+	​
+
+
+𝑃
+0
+𝑑
+𝑟
+𝑦
+=
+𝑃
+0
+𝑚
+𝑎
+𝑖
+=
+𝑃
+0
+𝑑
+𝑒
+𝑣
+=
+0
+P
+0
+dry
+	​
+
+=P
+0
+mai
+	​
+
+=P
+0
+dev
+	​
+
+=0
+
+Hidden states such as drum energy and moisture burden are initialized based on roast context.
+
+Terminal Roast Outcomes
+
+Roast outcomes evaluated near the end of the roast are:
+
+𝑌
+𝑡
+𝑒
+𝑟
+𝑚
+=
+[
+𝑇
+𝑑
+𝑟
+𝑜
+𝑝
+
+
+𝑊
+𝑑
+𝑟
+𝑜
+𝑝
+
+
+𝑡
+𝑑
+𝑟
+𝑜
+𝑝
+
+
+𝑙
+𝑜
+𝑠
+𝑠
+%
+
+
+𝐷
+𝑇
+𝑅
+]
+Y
+term
+=
+	​
+
+T
+drop
+W
+drop
+t
+drop
+loss%
+DTR
+	​
+
+	​
+
+
+Where:
+
+𝑇
+𝑑
+𝑟
+𝑜
+𝑝
+T
+drop
+ = drop temperature
+
+𝑊
+𝑑
+𝑟
+𝑜
+𝑝
+W
+drop
+ = drop mass
+
+𝑡
+𝑑
+𝑟
+𝑜
+𝑝
+t
+drop
+ = drop time
+
+loss% = roast mass loss
+
+DTR = development time ratio
+
+These variables are used for evaluation and later controller objectives.
+
+---
+
 # 2. Current Development Status
 
 Project stage: **V3.0 replay-stable simulator baseline**

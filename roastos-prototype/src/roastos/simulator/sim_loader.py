@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+from roastos.config import load_settings
 from .sim_types import (
     PhaseBTParams,
     PhaseETParams,
@@ -11,8 +12,6 @@ from .sim_types import (
     SimulatorParams,
     PHASES,
 )
-
-DEFAULT_MODEL_PATH = "artifacts/models/physics_model_v3_0.json"
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -31,8 +30,17 @@ def _clean_small(x: float, eps: float = 1e-12) -> float:
     return 0.0 if abs(x) < eps else float(x)
 
 
-def load_simulator_params(model_json_path: str | Path = DEFAULT_MODEL_PATH) -> SimulatorParams:
-    path = Path(model_json_path)
+def _legacy_or_new(raw: Dict[str, Any], new_key: str, legacy_key: str, default: float) -> float:
+    if new_key in raw and raw.get(new_key) is not None:
+        return float(raw.get(new_key))
+    if legacy_key in raw and raw.get(legacy_key) is not None:
+        return float(raw.get(legacy_key))
+    return float(default)
+
+
+def load_simulator_params(model_json_path: str | Path | None = None) -> SimulatorParams:
+    settings = load_settings()
+    path = Path(model_json_path) if model_json_path is not None else settings.paths.model_artifact
     payload = _read_json(path)
 
     phases_payload = payload.get("phases", {})
@@ -45,17 +53,20 @@ def load_simulator_params(model_json_path: str | Path = DEFAULT_MODEL_PATH) -> S
     if not isinstance(et_models_payload, dict):
         et_models_payload = {}
 
+    state_model_raw = settings.raw.get("state_model", {}) if isinstance(settings.raw, dict) else {}
+    context_model_raw = settings.raw.get("context_model", {}) if isinstance(settings.raw, dict) else {}
+
     params = SimulatorParams()
 
-    params.dt_sec = 1.0
-    params.bt_norm_denominator = 200.0
-    params.bt_norm_offset = 0.0
-    params.et_norm_denominator = 250.0
-    params.ror_filter_alpha = 0.70
-    params.ror_model_clip = 30.0
+    params.dt_sec = float(settings.simulator.dt_sec)
+    params.bt_norm_denominator = float(settings.simulator.bt_norm_denominator)
+    params.bt_norm_offset = float(settings.simulator.bt_norm_offset)
+    params.et_norm_denominator = float(settings.simulator.et_norm_denominator)
+    params.ror_filter_alpha = float(settings.simulator.ror_filter_alpha)
+    params.ror_model_clip = float(settings.simulator.ror_model_clip)
 
-    params.gas_already_normalized = True
-    params.pressure_is_raw_pa = True
+    params.gas_already_normalized = bool(settings.simulator.gas_already_normalized)
+    params.pressure_is_raw_pa = bool(settings.simulator.pressure_is_raw_pa)
 
     params.latent_decay = float(best_config.get("decay", latent_payload.get("best_decay", 0.99)))
     params.latent_pressure_scale = float(
@@ -67,6 +78,68 @@ def load_simulator_params(model_json_path: str | Path = DEFAULT_MODEL_PATH) -> S
         params.latent_std = 1.0
 
     params.include_gas_feature = bool(best_config.get("include_gas", False))
+
+    # V4 state-model hooks
+    params.moisture_decay_rate = float(state_model_raw.get("moisture_decay_rate", params.moisture_decay_rate))
+    params.moisture_heat_coeff = float(state_model_raw.get("moisture_heat_coeff", params.moisture_heat_coeff))
+    params.moisture_bt_drag_coeff = float(state_model_raw.get("moisture_bt_drag_coeff", params.moisture_bt_drag_coeff))
+    params.moisture_et_drag_coeff = float(state_model_raw.get("moisture_et_drag_coeff", params.moisture_et_drag_coeff))
+
+    params.progress_drying_bt_start = float(
+        state_model_raw.get("progress_drying_bt_start", params.progress_drying_bt_start)
+    )
+    params.progress_drying_bt_end = float(
+        state_model_raw.get("progress_drying_bt_end", params.progress_drying_bt_end)
+    )
+    params.progress_maillard_bt_start = float(
+        state_model_raw.get("progress_maillard_bt_start", params.progress_maillard_bt_start)
+    )
+    params.progress_maillard_bt_end = float(
+        state_model_raw.get("progress_maillard_bt_end", params.progress_maillard_bt_end)
+    )
+    params.progress_development_bt_start = float(
+        state_model_raw.get("progress_development_bt_start", params.progress_development_bt_start)
+    )
+    params.progress_development_bt_end = float(
+        state_model_raw.get("progress_development_bt_end", params.progress_development_bt_end)
+    )
+
+    # V4.1 context-aware hooks
+    params.enable_context_dynamics = bool(
+        context_model_raw.get("enable_context_dynamics", params.enable_context_dynamics)
+    )
+    params.reference_charge_weight_kg = float(
+        context_model_raw.get("reference_charge_weight_kg", params.reference_charge_weight_kg)
+    )
+
+    params.reference_bean_start_temp_c = _legacy_or_new(
+        context_model_raw,
+        "reference_bean_start_temp_c",
+        "reference_start_temp_c",
+        params.reference_bean_start_temp_c,
+    )
+    params.reference_charge_temp_c = float(
+        context_model_raw.get("reference_charge_temp_c", params.reference_charge_temp_c)
+    )
+
+    # backward compatibility alias only
+    params.reference_start_temp_c = params.reference_bean_start_temp_c
+
+    params.max_context_response_scale = float(
+        context_model_raw.get("max_context_response_scale", params.max_context_response_scale)
+    )
+    params.min_context_response_scale = float(
+        context_model_raw.get("min_context_response_scale", params.min_context_response_scale)
+    )
+    params.drop_weight_moisture_coeff = float(
+        context_model_raw.get("drop_weight_moisture_coeff", params.drop_weight_moisture_coeff)
+    )
+    params.drop_weight_development_coeff = float(
+        context_model_raw.get("drop_weight_development_coeff", params.drop_weight_development_coeff)
+    )
+    params.drop_weight_maillard_coeff = float(
+        context_model_raw.get("drop_weight_maillard_coeff", params.drop_weight_maillard_coeff)
+    )
 
     phase_models: Dict[str, PhaseModelParams] = {}
 
@@ -111,3 +184,4 @@ def load_simulator_params(model_json_path: str | Path = DEFAULT_MODEL_PATH) -> S
 
     params.phase_models = phase_models
     return params
+

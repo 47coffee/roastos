@@ -1,37 +1,58 @@
+
+"""
+#MPC TEST
+
+from roastos.simulator.sim_loader import load_simulator_params
+from roastos.simulator.calibrated_simulator import CalibratedRoasterSimulator
+from roastos.simulator.state_estimator import RoastStateEstimator
+from roastos.simulator.sim_types import RoastControl, RoastContext
+from roastos.mpc.phase_aware_mpc import PhaseAwareMPC
+from roastos.mpc.target_profile import TargetPoint, TargetTrajectory
+
+params = load_simulator_params()
+sim = CalibratedRoasterSimulator(params)
+estimator = RoastStateEstimator(sim)
+mpc = PhaseAwareMPC(sim)
+
+context = RoastContext(
+    roast_id="TEST",
+    start_weight_kg=6.0,
+    bean_start_temp_c=25.0,
+    charge_temp_c=230.0,
+)
+
+control0 = RoastControl(gas=0.25, pressure=144.3, drum_speed=0.65)
+
+state0 = estimator.initialize(
+    t_sec=0.0,
+    measured_bt=237.5,
+    measured_et=221.2,
+    measured_ror=0.0,
+    control=control0,
+    e_drum_raw=0.0,
+    context=context,
+    phase="drying",
+)
+
+target = TargetTrajectory(
+    points=[
+        TargetPoint(bt=state0.bt + 1.0 + 0.3*i, et=state0.et - 0.2*i, phase="drying")
+        for i in range(20)
+    ]
+)
+
+rec = mpc.recommend(
+    current_state=state0,
+    current_control=control0,
+    target=target,
+    context=context,
+)
+
+print(rec)
+"""
+
+
 import pandas as pd
-
-df = pd.read_parquet("c:/Projects/roastos/roastos-prototype/data/processed/calibration_dataset.parquet")
-
-print(df[["sweetness","acidity","overall"]].describe())
-
-print(df["phase"].value_counts())
-
-
-print(df.head())
-print("Columns:", df.columns)
-
-
-
-#Fast way to see valid roast IDs
-
-#python -c "import pandas as pd; df=pd.read_parquet('data/processed/calibration_dataset.parquet'); print(sorted(df['roast_id'].dropna().astype(str).unique().tolist()))"
-
-#If that prints too many, use:
-#python -c "import pandas as pd; df=pd.read_parquet('data/processed/calibration_dataset.parquet'); ids=sorted(df['roast_id'].dropna().astype(str).unique().tolist()); print(ids[:50]); print('count=', len(ids))"
-
-#If you want only IDs similar to PR-0176
-#python -c "import pandas as pd; df=pd.read_parquet('data/processed/calibration_dataset.parquet'); ids=sorted(df['roast_id'].dropna().astype(str).unique().tolist()); print([x for x in ids if '017' in x])"
-
-"""
-Best practical approach now
-
-For benchmarking several roasts, only use roasts with enough valid rows.
-
-You can list the roasts with usable replay length like this:
-
-python -c "import pandas as pd; df=pd.read_parquet('data/processed/calibration_dataset.parquet'); cols=['time_s','bt_c','et_c','ror','gas','pressure','drum_speed','phase']; tmp=df.dropna(subset=cols).groupby(df['roast_id'].astype(str)).size().sort_values(ascending=False); print(tmp.to_string())"
-
-That will show how many valid rows each roast has after cleaning.
-
-Then pick roasts with, say, at least 50 rows.
-"""
+df = pd.read_parquet(r"C:\Projects\roastos\roastos-prototype\data\processed\roast_sessions.parquet")
+print(df.columns.tolist())
+print(df[df["roast_id"]=="PR-0173"].T)

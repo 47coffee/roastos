@@ -1,0 +1,103 @@
+[paths]
+processed_folder = "data/processed"
+calibration_dataset = "data/processed/calibration_dataset.parquet"
+model_artifact = "artifacts/models/physics_model_v3_0.json"
+replay_output_dir = "artifacts/replay"
+
+[simulator]
+dt_sec = 1.0
+bt_norm_offset = 0.0
+bt_norm_denominator = 200.0
+et_norm_denominator = 250.0
+ror_filter_alpha = 0.70
+ror_model_clip = 30.0
+gas_already_normalized = true
+pressure_is_raw_pa = true
+
+[phase_thresholds]
+drying_end_bt = 160.0
+maillard_end_bt = 196.0
+
+[replay]
+teacher_force_et = false
+teacher_force_ror = false
+teacher_force_phase = true
+default_roast_ids = ["PR-0173", "PR-0181", "PR-0182", "PR-0186", "PR-0180"]
+warmup_rows = 120
+
+[calibration]
+bt_model_version = "v3.0"
+et_model_version = "et_v3.0"
+release_label = "V3.1"
+release_notes = "V3.1 replay robustness + config layer. V3.0 thermal plant remains the frozen historical baseline artifact. Context variables are carried through dataset/runtime interfaces."
+phase_names = ["drying", "maillard", "development"]
+latent_decay_grid = [0.92, 0.94, 0.96, 0.97, 0.98, 0.985, 0.99]
+pressure_scale_multipliers = [0.5, 1.0, 1.5]
+include_gas_options = [false, true]
+
+[state_model]
+canonical_state_names = ["bt", "et", "ror", "e_drum", "m_burden", "p_dry", "p_mai", "p_dev"]
+moisture_decay_rate = 0.015
+moisture_heat_coeff = 0.002
+moisture_bt_drag_coeff = 0.0
+moisture_et_drag_coeff = 0.0
+progress_drying_bt_start = 100.0
+progress_drying_bt_end = 160.0
+progress_maillard_bt_start = 150.0
+progress_maillard_bt_end = 196.0
+progress_development_bt_start = 196.0
+progress_development_bt_end = 222.0
+
+[context_model]
+enable_context_dynamics = false
+reference_charge_weight_kg = 6.0
+
+reference_bean_start_temp_c = 25.0
+default_bean_start_temp_c = 25.0
+
+reference_charge_temp_c = 230.0
+default_charge_temp_c = 230.0
+
+# backward compatibility only
+reference_start_temp_c = 25.0
+default_start_temp_c = 25.0
+
+max_context_response_scale = 1.35
+min_context_response_scale = 0.70
+default_start_weight_kg = 6.0
+drop_weight_moisture_coeff = 0.12
+drop_weight_development_coeff = 0.05
+drop_weight_maillard_coeff = 0.02
+
+[ekf]
+enabled = true
+k_bt = 0.35
+k_et = 0.25
+k_ror = 0.20
+
+[mpc]
+horizon_steps = 20
+move_block = 5
+gas_min = 0.0
+gas_max = 1.0
+pressure_min = 0.0
+pressure_max = 240.0
+gas_move_penalty = 2.0
+pressure_move_penalty = 0.02
+bt_track_weight = 1.0
+et_track_weight = 0.35
+terminal_bt_weight = 1.25
+terminal_et_weight = 0.50
+terminal_drop_weight_weight = 1.0
+
+[flavour]
+enabled = false
+predictor_mode = "stub"
+
+[flavour.default_weights]
+sweetness = 1.0
+clarity = 1.0
+body = 1.0
+acidity = 1.0
+bitterness = 1.0
+aroma = 1.0

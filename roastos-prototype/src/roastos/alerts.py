@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from roastos.types import RoastState
 from roastos.gateway.schemas import RoastRecommendation
-from roastos.mpc import MPCResult
+from roastos.mpc_old_casadi import MPCResult
 
 
 @dataclass

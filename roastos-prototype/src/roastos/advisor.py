@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from roastos.gateway.schemas import RoastMeasurementFrame, RoastRecommendation
-from roastos.mpc import MPCResult
+from roastos.mpc_old_casadi import MPCResult
 from roastos.types import Control, RoastState
 
 """This module defines the build_recommendation function, which generates a RoastRecommendation based on the current context of the roast.

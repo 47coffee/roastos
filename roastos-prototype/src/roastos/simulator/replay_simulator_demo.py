@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from roastos.config import load_settings
 from roastos.simulator.calibrated_simulator import CalibratedRoasterSimulator
 from roastos.simulator.replay_validator import (
     replay_roast_dataframe,
@@ -13,45 +14,29 @@ from roastos.simulator.replay_validator import (
 from roastos.simulator.sim_loader import load_simulator_params
 
 
+def _safe_first(detail_df: pd.DataFrame, col: str):
+    if col in detail_df.columns and not detail_df.empty:
+        val = detail_df[col].iloc[0]
+        if pd.notna(val):
+            return val
+    return None
+
+
 def main():
+    settings = load_settings()
+
     parser = argparse.ArgumentParser(
         description="Replay one roast from calibration_dataset.parquet through the RoastOS calibrated simulator."
     )
-    parser.add_argument(
-        "--model-json",
-        required=True,
-        help="Path to physics_model_v2_2.json",
-    )
-    parser.add_argument(
-        "--timeseries-parquet",
-        required=True,
-        help="Path to calibration_dataset.parquet",
-    )
-    parser.add_argument(
-        "--roast-id",
-        default=None,
-        help="Optional roast/session identifier to filter one roast. If omitted, the first roast is used.",
-    )
-    parser.add_argument(
-        "--teacher-force-et",
-        action="store_true",
-        help="Use actual ET as simulator input during replay.",
-    )
-    parser.add_argument(
-        "--teacher-force-ror",
-        action="store_true",
-        help="Use actual RoR as simulator input during replay.",
-    )
-    parser.add_argument(
-        "--teacher-force-phase",
-        action="store_true",
-        help="Use actual phase labels from the calibration dataset during replay.",
-    )
-    parser.add_argument(
-        "--save-csv",
-        default=None,
-        help="Optional path to save detailed replay rows as CSV",
-    )
+    parser.add_argument("--model-json", default=str(settings.paths.model_artifact))
+    parser.add_argument("--timeseries-parquet", default=str(settings.paths.calibration_dataset))
+    parser.add_argument("--roast-id", default=None)
+    parser.add_argument("--teacher-force-et", action="store_true", default=settings.replay.teacher_force_et)
+    parser.add_argument("--teacher-force-ror", action="store_true", default=settings.replay.teacher_force_ror)
+    parser.add_argument("--teacher-force-phase", action="store_true", default=settings.replay.teacher_force_phase)
+    parser.add_argument("--warmup-rows", type=int, default=settings.replay.warmup_rows)
+    parser.add_argument("--use-estimator", action="store_true", help="Enable V3.2 state estimator.")
+    parser.add_argument("--save-csv", default=None)
     args = parser.parse_args()
 
     model_path = Path(args.model_json)
@@ -71,6 +56,8 @@ def main():
         teacher_force_et=args.teacher_force_et,
         teacher_force_ror=args.teacher_force_ror,
         teacher_force_phase=args.teacher_force_phase,
+        warmup_rows=args.warmup_rows,
+        use_estimator=args.use_estimator,
     )
     metrics = summarize_replay_metrics(result)
     detail_df = pd.DataFrame(result.rows)
@@ -79,11 +66,20 @@ def main():
         raise ValueError("Replay produced no rows.")
 
     roast_value = detail_df["roast_id"].iloc[0]
+    bean_start_temp = _safe_first(detail_df, "bean_start_temp_c")
+    charge_temp = _safe_first(detail_df, "charge_temp_c")
+    start_weight = _safe_first(detail_df, "start_weight_kg")
+
     print(f"Replay roast_id: {roast_value}")
     print(f"Replay rows: {len(detail_df) + 1}")
     print(f"Teacher-forced ET: {args.teacher_force_et}")
     print(f"Teacher-forced RoR: {args.teacher_force_ror}")
     print(f"Teacher-forced phase: {args.teacher_force_phase}")
+    print(f"Observer enabled: {args.use_estimator}")
+    print(f"Warmup rows: {args.warmup_rows}")
+    print(f"Start weight kg: {start_weight}")
+    print(f"Bean start temp C: {bean_start_temp}")
+    print(f"Charge temp C: {charge_temp}")
 
     print("\nReplay metrics")
     print("-" * 40)
@@ -103,6 +99,10 @@ def main():
         "gas",
         "pressure",
         "drum_speed",
+        "observer_enabled",
+        "start_weight_kg",
+        "bean_start_temp_c",
+        "charge_temp_c",
         "actual_bt",
         "pred_bt",
         "actual_et",
@@ -111,6 +111,10 @@ def main():
         "pred_ror",
         "pred_e_drum_raw",
         "pred_e_drum",
+        "pred_m_burden",
+        "pred_p_dry",
+        "pred_p_mai",
+        "pred_p_dev",
         "bt_error",
         "et_error",
         "ror_error",
@@ -120,9 +124,11 @@ def main():
 
     if args.save_csv:
         out_path = Path(args.save_csv)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         detail_df.to_csv(out_path, index=False)
         print(f"\nSaved replay details to: {out_path}")
 
 
 if __name__ == "__main__":
     main()
+

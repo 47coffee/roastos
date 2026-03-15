@@ -1,26 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import lsq_linear
 
+from roastos.config import load_settings
 
-DEFAULT_DATASET_PATH = "data/processed/calibration_dataset.parquet"
-DEFAULT_OUTPUT_PATH = "artifacts/models/physics_model_v3_0.json"
-PHASES = ["drying", "maillard", "development"]
 
-BT_MODEL_VERSION = "v3.0"
-ET_MODEL_VERSION = "et_v3.0"
-RELEASE_LABEL = "V3.0"
-RELEASE_NOTES = (
-    "Replay-stable coupled simulator baseline. "
-    "Includes phase-specific BT calibration, ET v2-style coupled calibration, "
-    "latent e_drum normalization stats, and intended use for replay validation "
-    "and MPC development."
-)
+_SETTINGS = load_settings()
+PHASES = list(_SETTINGS.calibration.phase_names)
+
+BT_MODEL_VERSION = _SETTINGS.calibration.bt_model_version
+ET_MODEL_VERSION = _SETTINGS.calibration.et_model_version
+RELEASE_LABEL = _SETTINGS.calibration.release_label
+RELEASE_NOTES = _SETTINGS.calibration.release_notes
 
 
 def _project_root() -> Path:
@@ -34,35 +30,41 @@ def _resolve_project_path(path_value: str | Path) -> Path:
     return (_project_root() / path).resolve()
 
 
-def load_dataset(dataset_path: str | Path = DEFAULT_DATASET_PATH) -> pd.DataFrame:
-    dataset_path = _resolve_project_path(dataset_path)
+def load_dataset(dataset_path: str | Path | None = None) -> pd.DataFrame:
+    path = Path(dataset_path) if dataset_path is not None else _SETTINGS.paths.calibration_dataset
+    dataset_path = _resolve_project_path(path)
 
     if not dataset_path.exists():
         raise RuntimeError(
-            f"Calibration dataset not found: {dataset_path}. "
-            f"Run dataset_builder first."
+            f"Calibration dataset not found: {dataset_path}. Run dataset_builder first."
         )
 
     return pd.read_parquet(dataset_path)
+
+
+def normalize_context_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if "bean_start_temp_c" not in df.columns and "start_temp_c" in df.columns:
+        df["bean_start_temp_c"] = df["start_temp_c"]
+
+    return df
 
 
 def ensure_v2_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(["roast_id", "time_s"]).reset_index(drop=True)
 
-    # BT target
     if "bt_next" not in df.columns:
         df["bt_next"] = df.groupby("roast_id")["bt_c"].shift(-1)
     if "bt_delta" not in df.columns:
         df["bt_delta"] = df["bt_next"] - df["bt_c"]
 
-    # ET target
     if "et_next" not in df.columns:
         df["et_next"] = df.groupby("roast_id")["et_c"].shift(-1)
     if "et_step" not in df.columns:
         df["et_step"] = df["et_next"] - df["et_c"]
 
-    # Core gaps / levels
     if "et_delta" not in df.columns:
         df["et_delta"] = df["et_c"] - df["bt_c"]
     if "bt_c_norm" not in df.columns:
@@ -70,30 +72,28 @@ def ensure_v2_features(df: pd.DataFrame) -> pd.DataFrame:
     if "et_c_norm" not in df.columns:
         df["et_c_norm"] = df["et_c"] / 250.0
 
-    # Lags
     if "et_delta_lag1" not in df.columns:
         df["et_delta_lag1"] = df.groupby("roast_id")["et_delta"].shift(1)
     if "et_c_lag1" not in df.columns:
         df["et_c_lag1"] = df.groupby("roast_id")["et_c"].shift(1)
     if "gas_lag1" not in df.columns:
         df["gas_lag1"] = df.groupby("roast_id")["gas"].shift(1)
+    if "airflow_lag1" not in df.columns and "airflow" in df.columns:
+        df["airflow_lag1"] = df.groupby("roast_id")["airflow"].shift(1)
     if "pressure_lag1" not in df.columns:
         df["pressure_lag1"] = df.groupby("roast_id")["pressure"].shift(1)
 
-    # Step changes
     if "gas_delta" not in df.columns:
         df["gas_delta"] = df["gas"] - df["gas_lag1"]
+    if "airflow_delta" not in df.columns and "airflow" in df.columns:
+        df["airflow_delta"] = df["airflow"] - df["airflow_lag1"]
     if "pressure_delta" not in df.columns:
         df["pressure_delta"] = df["pressure"] - df["pressure_lag1"]
 
     return df
 
 
-def add_latent_drum_energy(
-    df: pd.DataFrame,
-    decay: float,
-    pressure_scale: float,
-) -> pd.DataFrame:
+def add_latent_drum_energy(df: pd.DataFrame, decay: float, pressure_scale: float) -> pd.DataFrame:
     df = ensure_v2_features(df)
     out = df.copy()
 
@@ -133,10 +133,7 @@ def compute_latent_stats(df: pd.DataFrame, decay: float, pressure_scale: float) 
     std_val = float(tmp["e_drum_raw"].std())
     if not np.isfinite(std_val) or std_val <= 1e-9:
         std_val = 1.0
-    return {
-        "raw_mean": mean_val,
-        "raw_std": std_val,
-    }
+    return {"raw_mean": mean_val, "raw_std": std_val}
 
 
 def _clean_coeff_dict(coeffs: dict, eps: float = 1e-12) -> dict:
@@ -155,14 +152,7 @@ def prepare_training_matrix_v3_0(
 ) -> tuple[np.ndarray, np.ndarray, list[str], pd.DataFrame]:
     df = df.copy()
 
-    required_cols = [
-        "bt_delta",
-        "e_drum",
-        "et_delta",
-        "bt_c_norm",
-        "ror",
-        "pressure",
-    ]
+    required_cols = ["bt_delta", "e_drum", "et_delta", "bt_c_norm", "ror", "pressure"]
     if include_gas:
         required_cols.append("gas")
 
@@ -207,15 +197,8 @@ def prepare_training_matrix_et_v3(
     df = df.copy()
 
     required_cols = [
-        "et_step",
-        "e_drum",
-        "et_delta",
-        "et_delta_lag1",
-        "pressure",
-        "pressure_lag1",
-        "pressure_delta",
-        "ror",
-        "et_c_norm",
+        "et_step", "e_drum", "et_delta", "et_delta_lag1",
+        "pressure", "pressure_lag1", "pressure_delta", "ror", "et_c_norm",
     ]
     if include_gas:
         required_cols.append("gas")
@@ -270,13 +253,7 @@ def fit_bounded_regression(
     lower_bounds = np.array([-np.inf] + [0.0] * (X.shape[1] - 1), dtype=float)
     upper_bounds = np.array([np.inf] + [np.inf] * (X.shape[1] - 1), dtype=float)
 
-    result = lsq_linear(
-        X,
-        y,
-        bounds=(lower_bounds, upper_bounds),
-        lsmr_tol="auto",
-        verbose=0,
-    )
+    result = lsq_linear(X, y, bounds=(lower_bounds, upper_bounds), lsmr_tol="auto", verbose=0)
 
     if not result.success:
         raise RuntimeError(f"Bounded calibration failed: {result.message}")
@@ -304,12 +281,7 @@ def fit_bounded_regression(
     return _clean_coeff_dict(coeffs)
 
 
-def fit_phase_models_v3_0(
-    df: pd.DataFrame,
-    decay: float,
-    pressure_scale: float,
-    include_gas: bool,
-) -> dict:
+def fit_phase_models_v3_0(df: pd.DataFrame, decay: float, pressure_scale: float, include_gas: bool) -> dict:
     phase_models: dict[str, dict] = {}
 
     for phase in PHASES:
@@ -324,10 +296,7 @@ def fit_phase_models_v3_0(
             }
             continue
 
-        X, y, feature_names, cleaned_df = prepare_training_matrix_v3_0(
-            phase_df,
-            include_gas=include_gas,
-        )
+        X, y, feature_names, cleaned_df = prepare_training_matrix_v3_0(phase_df, include_gas=include_gas)
         if len(X) < len(feature_names):
             phase_models[phase] = {
                 "model_version": BT_MODEL_VERSION,
@@ -337,13 +306,7 @@ def fit_phase_models_v3_0(
             }
             continue
 
-        coeffs = fit_bounded_regression(
-            X,
-            y,
-            feature_names,
-            model_version=BT_MODEL_VERSION,
-            target_name="bt_delta",
-        )
+        coeffs = fit_bounded_regression(X, y, feature_names, model_version=BT_MODEL_VERSION, target_name="bt_delta")
         coeffs["phase"] = phase
         coeffs["status"] = "ok"
         coeffs["n_roasts"] = int(cleaned_df["roast_id"].nunique())
@@ -355,12 +318,7 @@ def fit_phase_models_v3_0(
     return phase_models
 
 
-def fit_phase_et_models_v3(
-    df: pd.DataFrame,
-    decay: float,
-    pressure_scale: float,
-    include_gas: bool,
-) -> dict:
+def fit_phase_et_models_v3(df: pd.DataFrame, decay: float, pressure_scale: float, include_gas: bool) -> dict:
     phase_models: dict[str, dict] = {}
 
     for phase in PHASES:
@@ -375,10 +333,7 @@ def fit_phase_et_models_v3(
             }
             continue
 
-        X, y, feature_names, cleaned_df = prepare_training_matrix_et_v3(
-            phase_df,
-            include_gas=include_gas,
-        )
+        X, y, feature_names, cleaned_df = prepare_training_matrix_et_v3(phase_df, include_gas=include_gas)
         if len(X) < len(feature_names):
             phase_models[phase] = {
                 "model_version": ET_MODEL_VERSION,
@@ -388,13 +343,7 @@ def fit_phase_et_models_v3(
             }
             continue
 
-        coeffs = fit_bounded_regression(
-            X,
-            y,
-            feature_names,
-            model_version=ET_MODEL_VERSION,
-            target_name="et_step",
-        )
+        coeffs = fit_bounded_regression(X, y, feature_names, model_version=ET_MODEL_VERSION, target_name="et_step")
         coeffs["phase"] = phase
         coeffs["status"] = "ok"
         coeffs["n_roasts"] = int(cleaned_df["roast_id"].nunique())
@@ -409,11 +358,7 @@ def fit_phase_et_models_v3(
 def summarize_phase_models(phase_models: dict[str, dict]) -> dict:
     valid = [m for m in phase_models.values() if m.get("status") == "ok"]
     if not valid:
-        return {
-            "mean_r2": -np.inf,
-            "weighted_r2": -np.inf,
-            "total_samples": 0,
-        }
+        return {"mean_r2": -np.inf, "weighted_r2": -np.inf, "total_samples": 0}
 
     total_samples = sum(m["n_samples"] for m in valid)
     weighted_r2 = sum(m["r2"] * m["n_samples"] for m in valid) / total_samples
@@ -427,9 +372,12 @@ def summarize_phase_models(phase_models: dict[str, dict]) -> dict:
 
 def search_model_config(df: pd.DataFrame) -> tuple[dict, dict]:
     pressure_median = float(df["pressure"].median()) if "pressure" in df.columns else 100.0
-    pressure_scales = [max(10.0, pressure_median * mult) for mult in (0.5, 1.0, 1.5)]
-    decay_grid = [0.92, 0.94, 0.96, 0.97, 0.98, 0.985, 0.99]
-    gas_options = [False, True]
+    pressure_scales = [
+        max(10.0, pressure_median * mult)
+        for mult in _SETTINGS.calibration.pressure_scale_multipliers
+    ]
+    decay_grid = list(_SETTINGS.calibration.latent_decay_grid)
+    gas_options = list(_SETTINGS.calibration.include_gas_options)
 
     best_score = -np.inf
     best_models: dict[str, dict] = {}
@@ -443,24 +391,13 @@ def search_model_config(df: pd.DataFrame) -> tuple[dict, dict]:
     for include_gas in gas_options:
         for decay in decay_grid:
             for pressure_scale in pressure_scales:
-                candidate_df = add_latent_drum_energy(
-                    df,
-                    decay=decay,
-                    pressure_scale=pressure_scale,
-                )
+                candidate_df = add_latent_drum_energy(df, decay=decay, pressure_scale=pressure_scale)
                 candidate_models = fit_phase_models_v3_0(
-                    candidate_df,
-                    decay=decay,
-                    pressure_scale=pressure_scale,
-                    include_gas=include_gas,
+                    candidate_df, decay=decay, pressure_scale=pressure_scale, include_gas=include_gas
                 )
                 summary = summarize_phase_models(candidate_models)
                 score = summary["weighted_r2"]
-                key = (
-                    f"include_gas={include_gas}|"
-                    f"decay={decay:.3f}|"
-                    f"pressure_scale={pressure_scale:.3f}"
-                )
+                key = f"include_gas={include_gas}|decay={decay:.3f}|pressure_scale={pressure_scale:.3f}"
                 search_log[key] = summary
 
                 if score > best_score:
@@ -480,8 +417,9 @@ def search_model_config(df: pd.DataFrame) -> tuple[dict, dict]:
     }, search_log
 
 
-def save_model(coeffs: dict, output_path: str | Path = DEFAULT_OUTPUT_PATH) -> Path:
-    output_path = _resolve_project_path(output_path)
+def save_model(coeffs: dict, output_path: str | Path | None = None) -> Path:
+    path = Path(output_path) if output_path is not None else _SETTINGS.paths.model_artifact
+    output_path = _resolve_project_path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -495,6 +433,7 @@ def save_model(coeffs: dict, output_path: str | Path = DEFAULT_OUTPUT_PATH) -> P
 def main() -> None:
     print("Loading dataset...")
     df = load_dataset()
+    df = normalize_context_columns(df)
     df = ensure_v2_features(df)
     print("Rows:", len(df))
 
@@ -504,6 +443,23 @@ def main() -> None:
     else:
         raise KeyError("Dataset is missing required column: phase")
 
+    context_cols = [
+        c for c in [
+            "start_weight_kg",
+            "bean_start_temp_c",
+            "charge_temp_c",
+            "actual_drop_bt",
+            "actual_drop_weight_kg",
+            "airflow",
+            "airflow_pct",
+            "drum_speed",
+            "drum_speed_pct",
+        ]
+        if c in df.columns
+    ]
+    print("\nAvailable context/control columns:")
+    print(context_cols if context_cols else "None")
+
     print(f"\nSearching {RELEASE_LABEL} BT model configurations...")
     search_result, search_log = search_model_config(df)
     best_config = search_result["best_config"]
@@ -511,15 +467,11 @@ def main() -> None:
     best_summary = search_result["best_summary"]
 
     latent_stats = compute_latent_stats(
-        df,
-        decay=best_config["decay"],
-        pressure_scale=best_config["pressure_scale"],
+        df, decay=best_config["decay"], pressure_scale=best_config["pressure_scale"]
     )
 
     best_latent_df = add_latent_drum_energy(
-        df,
-        decay=best_config["decay"],
-        pressure_scale=best_config["pressure_scale"],
+        df, decay=best_config["decay"], pressure_scale=best_config["pressure_scale"]
     )
 
     et_models = fit_phase_et_models_v3(
@@ -583,14 +535,29 @@ def main() -> None:
         "model_version": BT_MODEL_VERSION,
         "target": "bt_delta",
         "feature_engineering": {
-            "gas_source": "gas_pct / 100.0",
-            "pressure_source": "drum_pressure_pa",
+            "gas_source": "Curve - Gas -> gas_pct / 100.0",
+            "airflow_source": "Curve - Airflow -> airflow_pct / 100.0",
+            "drum_speed_source": "Curve - Drum speed -> drum_speed_pct / 100.0",
+            "pressure_source": "Curve - Drum pressure -> drum_pressure_pa",
+            "bt_source": "Curve - Bean temperature -> bt_c",
+            "et_source": "Curve - Exhaust temperature -> et_c",
             "bt_c_norm_equation": "bt_c / 200.0",
             "et_c_norm_equation": "et_c / 250.0",
             "phase_source": "dataset phase column from first_crack-relative timing",
             "ror_source": "groupby(roast_id) diff(bt_c) / diff(time_s) * 60",
             "bt_target": "bt_next - bt_c",
             "et_target": "et_next - et_c",
+        },
+        "context_support": {
+            "available_columns": context_cols,
+            "note": (
+                "Frozen V3.2 keeps the historical V3.0 regression structure. "
+                "Gas is modeled as a direct control feature where enabled; drum pressure remains "
+                "the pressure-side feature used in the plant. Airflow and drum speed are carried in the "
+                "dataset contract for V4.1+ control/context integration."
+            ),
+            "bean_start_temp_definition": "bean temperature at charge",
+            "charge_temp_definition": "machine / ET-side charge temperature near t=0",
         },
         "latent_state": {
             "name": "e_drum",
@@ -614,4 +581,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

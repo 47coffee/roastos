@@ -65,7 +65,7 @@ Replay tests were run with:
 - V3.0 is stable across multiple roasts and is good enough to serve as the baseline plant model for controller development.
 - Replay quality is acceptable on most benchmark roasts.
 - Main remaining weakness is late-development ET drift on some roasts.
-- PR-0180 is retained as a stress-test / failure-case roast for future robustness work.
+- PR-0180 is retained as a stress-test / failure-case roast for future robustness work. PR-0180 may be partly explained by omitted batch-mass context, since V3.0 currently does not include coffee weight / batch size in latent-state or transition equations.
 
 #### Strategic decision
 - **Close V3.0 now** as the replay-stable baseline.

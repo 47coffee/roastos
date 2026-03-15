@@ -7,16 +7,36 @@ from typing import Dict, List, Optional
 PHASES = ("drying", "maillard", "development")
 
 
+@dataclass(frozen=True)
+class RoastContext:
+    roast_id: Optional[str] = None
+    start_weight_kg: Optional[float] = None
+
+    # new explicit fields
+    bean_start_temp_c: Optional[float] = None
+    charge_temp_c: Optional[float] = None
+
+    # backward compatibility alias only
+    start_temp_c: Optional[float] = None
+
+    target_drop_bt: Optional[float] = None
+    target_drop_weight_kg: Optional[float] = None
+
+    def __post_init__(self):
+        if self.bean_start_temp_c is None and self.start_temp_c is not None:
+            object.__setattr__(self, "bean_start_temp_c", self.start_temp_c)
+
+    @property
+    def effective_bean_start_temp_c(self) -> Optional[float]:
+        return self.bean_start_temp_c
+
+    @property
+    def effective_charge_temp_c(self) -> Optional[float]:
+        return self.charge_temp_c
+
+
 @dataclass
 class RoastControl:
-    """
-    Runtime control inputs.
-
-    Assumed calibration-aligned convention:
-    - gas is already normalized to 0..1
-    - pressure is raw machine airflow / drum pressure units
-    - drum_speed is optional and not currently used by the calibrated models
-    """
     gas: float
     pressure: float
     drum_speed: float = 0.65
@@ -24,16 +44,6 @@ class RoastControl:
 
 @dataclass
 class RoastSimState:
-    """
-    Main simulator state.
-
-    Notes:
-    - bt and et are in degC
-    - ror is in degC/min
-    - e_drum_raw is the latent unstandardized state
-    - e_drum is the standardized latent state used by calibration
-    - bt_prev / et_prev / prev_pressure are carried to reproduce lagged ET-model features
-    """
     t_sec: float
     bt: float
     et: float
@@ -41,6 +51,11 @@ class RoastSimState:
 
     e_drum_raw: float = 0.0
     e_drum: float = 0.0
+
+    m_burden: float = 1.0
+    p_dry: float = 0.0
+    p_mai: float = 0.0
+    p_dev: float = 0.0
 
     phase: str = "drying"
 
@@ -60,6 +75,10 @@ class RoastSimState:
             ror=self.ror,
             e_drum_raw=self.e_drum_raw,
             e_drum=self.e_drum,
+            m_burden=self.m_burden,
+            p_dry=self.p_dry,
+            p_mai=self.p_mai,
+            p_dev=self.p_dev,
             phase=self.phase,
             gas=self.gas,
             pressure=self.pressure,
@@ -72,18 +91,6 @@ class RoastSimState:
 
 @dataclass
 class PhaseBTParams:
-    """
-    Phase-specific calibrated BT-delta coefficients.
-
-    Simulator-native mapping:
-    - intercept            -> intercept
-    - e_drum              -> c_e_drum
-    - et_delta            -> c_et_delta
-    - neg_bt_level        -> c_bt_level = -coef
-    - neg_ror             -> c_ror = -coef
-    - neg_pressure_direct -> c_pressure_direct = -coef
-    - gas                 -> c_gas
-    """
     intercept: float = 0.0
     c_e_drum: float = 0.0
     c_et_delta: float = 0.0
@@ -95,24 +102,6 @@ class PhaseBTParams:
 
 @dataclass
 class PhaseETParams:
-    """
-    Phase-specific calibrated ET-step coefficients.
-
-    Target:
-        et_step = et_next - et
-
-    Simulator-native mapping:
-    - intercept            -> intercept
-    - e_drum               -> c_e_drum
-    - gas                  -> c_gas
-    - neg_et_bt_gap        -> c_et_gap = -coef
-    - neg_et_bt_gap_lag1   -> c_et_gap_lag1 = -coef
-    - neg_pressure         -> c_pressure = -coef
-    - neg_pressure_lag1    -> c_pressure_lag1 = -coef
-    - pressure_delta_pos   -> c_pressure_delta_pos
-    - neg_ror              -> c_ror = -coef
-    - neg_et_level         -> c_et_level = -coef
-    """
     intercept: float = 0.0
     c_e_drum: float = 0.0
     c_gas: float = 0.0
@@ -127,9 +116,6 @@ class PhaseETParams:
 
 @dataclass
 class PhaseModelParams:
-    """
-    Container for all phase-specific model information.
-    """
     bt: PhaseBTParams = field(default_factory=PhaseBTParams)
     et: PhaseETParams = field(default_factory=PhaseETParams)
     feature_names: List[str] = field(default_factory=list)
@@ -137,38 +123,63 @@ class PhaseModelParams:
 
 
 @dataclass
+class TerminalOutputs:
+    drop_bt: float
+    drop_time_s: float
+    drop_weight_kg: Optional[float] = None
+    loss_fraction: Optional[float] = None
+    dtr: Optional[float] = None
+
+
+@dataclass
 class SimulatorParams:
-    """
-    Calibration-aligned simulator settings.
-    """
     dt_sec: float = 1.0
 
-    # bt_c_norm = (bt - bt_norm_offset) / bt_norm_denominator
-    # Current calibration contract: bt / 200.0
     bt_norm_offset: float = 0.0
     bt_norm_denominator: float = 200.0
-
-    # et_c_norm = et / 250.0
     et_norm_denominator: float = 250.0
 
-    # RoR handling
     ror_filter_alpha: float = 0.70
     ror_model_clip: float = 30.0
 
-    # Input conventions
     gas_already_normalized: bool = True
     pressure_is_raw_pa: bool = True
 
-    # Latent e_drum reconstruction:
-    # e_drum_raw_t = decay * e_drum_raw_t-1 + gas - pressure / pressure_scale
-    # e_drum = (e_drum_raw - latent_mean) / latent_std
     latent_decay: float = 0.99
     latent_pressure_scale: float = 100.0
     latent_mean: float = 0.0
     latent_std: float = 1.0
 
-    # Whether the fitted BT phase model included gas as direct feature
     include_gas_feature: bool = False
+
+    moisture_decay_rate: float = 0.015
+    moisture_heat_coeff: float = 0.002
+    moisture_bt_drag_coeff: float = 0.0
+    moisture_et_drag_coeff: float = 0.0
+
+    progress_drying_bt_start: float = 100.0
+    progress_drying_bt_end: float = 160.0
+    progress_maillard_bt_start: float = 150.0
+    progress_maillard_bt_end: float = 196.0
+    progress_development_bt_start: float = 196.0
+    progress_development_bt_end: float = 222.0
+
+    enable_context_dynamics: bool = False
+    reference_charge_weight_kg: float = 6.0
+
+    # new explicit fields
+    reference_bean_start_temp_c: float = 25.0
+    reference_charge_temp_c: float = 230.0
+
+    # backward compatibility only
+    reference_start_temp_c: float = 25.0
+
+    max_context_response_scale: float = 1.35
+    min_context_response_scale: float = 0.70
+
+    drop_weight_moisture_coeff: float = 0.12
+    drop_weight_development_coeff: float = 0.05
+    drop_weight_maillard_coeff: float = 0.02
 
     phase_models: Dict[str, PhaseModelParams] = field(default_factory=dict)
 
@@ -198,3 +209,4 @@ class ReplayMetrics:
 class ReplayResult:
     rows: List[dict]
     metrics: ReplayMetrics
+

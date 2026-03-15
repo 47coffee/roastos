@@ -9,7 +9,7 @@ from roastos.estimator import RoastStateEstimator
 from roastos.filter import RoRFilter
 from roastos.gateway.dummy_dutchmaster import DummyDutchMasterGateway
 from roastos.logger import RoastRuntimeLogger
-from roastos.mpc import RoastMPC
+from roastos.mpc_old_casadi import RoastMPC
 from roastos.state import initial_state
 from roastos.types import Control
 

@@ -7,28 +7,6 @@ from typing import Optional
 
 import pandas as pd
 
-"""This module implements the data import pipeline for Cropster roast and QC files.
-
-It reads Excel files exported from Cropster, extracts roast metadata, roast
-timeseries, and QC/sensory information, then saves the processed data in a
-structured format (Parquet) for further analysis.
-
-The main entry point is ``run_import_from_config``. It reads configuration
-parameters from a config file, processes all roast and QC files in the
-specified folders, and saves the outputs to a designated processed-data
-folder.
-
-The parser aims to be robust to common Cropster export variations, including:
-- alternate column names (for example "Id-Tag" vs "Roast ID")
-- time-like values exported as strings, datetime.time, or Timedelta
-- comments/events stored in either "Comment type" or "Comment"
-"""
-
-
-# ------------------------------------------------------------
-# Config
-# ------------------------------------------------------------
-
 DEFAULT_CONFIG_PATH = Path("config/roastos.ini")
 
 
@@ -78,11 +56,6 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> ConfigParser:
     cfg = ConfigParser()
     cfg.read(resolved_config_path)
     return cfg
-
-
-# ------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------
 
 
 def _safe_sheet(workbook: dict[str, pd.DataFrame], name: str) -> Optional[pd.DataFrame]:
@@ -178,9 +151,8 @@ def _time_to_seconds(value):
 
 def _normalize_curve_sheet(df: pd.DataFrame, value_name: str) -> pd.DataFrame:
     """
-    Expect Cropster curve sheets in shape similar to:
-
-    Time (s) | Value (...)
+    Cropster curve sheets are expected in a simple two-column structure:
+    Time (s) | Value
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["time_s", value_name])
@@ -205,11 +177,6 @@ def _normalize_curve_sheet(df: pd.DataFrame, value_name: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-# ------------------------------------------------------------
-# Roast import
-# ------------------------------------------------------------
-
-
 def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Returns:
@@ -225,7 +192,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     general = _clean_columns(general) if general is not None else pd.DataFrame()
     comments = _clean_columns(comments) if comments is not None else pd.DataFrame()
 
-    # --- metadata ---
     roast_id = _extract_first_matching_value(
         general, ["Id-Tag", "ID Tag", "Roast ID", "Batch ID", "IdTag"]
     )
@@ -244,38 +210,20 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     end_weight = _extract_first_matching_value(general, ["End weight"])
     weight_loss_pct = _extract_first_matching_value(general, ["Weight loss"])
 
-    duration = _time_to_seconds(
-        _extract_first_matching_value(general, ["Duration"])
-    )
+    duration = _time_to_seconds(_extract_first_matching_value(general, ["Duration"]))
     start_temp = _extract_first_matching_value(general, ["Start temp.", "Start temp"])
     end_temp = _extract_first_matching_value(general, ["End temp.", "End temp"])
-    dev_time = _time_to_seconds(
-        _extract_first_matching_value(general, ["Dev. time", "Dev time"])
-    )
-    dev_ratio = _extract_first_matching_value(
-        general, ["Dev. time ratio", "Dev time ratio"]
-    )
-    first_crack = _time_to_seconds(
-        _extract_first_matching_value(general, ["First crack"])
-    )
-    color_change = _time_to_seconds(
-        _extract_first_matching_value(general, ["Color change"])
-    )
-    drying_time = _time_to_seconds(
-        _extract_first_matching_value(general, ["Drying time"])
-    )
-    maillard_time = _time_to_seconds(
-        _extract_first_matching_value(general, ["Maillard time"])
-    )
+    dev_time = _time_to_seconds(_extract_first_matching_value(general, ["Dev. time", "Dev time"]))
+    dev_ratio = _extract_first_matching_value(general, ["Dev. time ratio", "Dev time ratio"])
+    first_crack = _time_to_seconds(_extract_first_matching_value(general, ["First crack"]))
+    color_change = _time_to_seconds(_extract_first_matching_value(general, ["Color change"]))
+    drying_time = _time_to_seconds(_extract_first_matching_value(general, ["Drying time"]))
+    maillard_time = _time_to_seconds(_extract_first_matching_value(general, ["Maillard time"]))
 
     roast_value = _extract_first_matching_value(general, ["Roast value"])
     roast_value_2 = _extract_first_matching_value(general, ["Roast value 2"])
-    sensorial_score = _extract_first_matching_value(
-        general, ["Sensorial score", "Sensorial"]
-    )
-    sensorial_descriptors = _extract_first_matching_value(
-        general, ["Sensorial descriptors"]
-    )
+    sensorial_score = _extract_first_matching_value(general, ["Sensorial score", "Sensorial"])
+    sensorial_descriptors = _extract_first_matching_value(general, ["Sensorial descriptors"])
     sensorial_notes = _extract_first_matching_value(
         general, ["Sensorial notes", "Roasting notes", "Notes"]
     )
@@ -313,7 +261,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
         ]
     )
 
-    # --- event comments ---
     event_df = pd.DataFrame(columns=["time_s", "event"])
     if comments is not None and not comments.empty:
         c = comments.copy()
@@ -339,19 +286,20 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
             event_df = event_df.dropna(subset=["time_s"])
             event_df["event"] = event_df["event"].astype("string")
 
-    # --- curves ---
+    # Explicit canonical map for the tabs you listed
     sheet_map = {
         "Curve - Bean temperature": "bt_c",
         "Curve - Exhaust temperature": "et_c",
+        "Curve - Gas": "gas_pct",
+        "Curve - Airflow": "airflow_pct",
+        "Curve - Drum speed": "drum_speed_pct",
+        "Curve - Drum pressure": "drum_pressure_pa",
+        # optional extras if present
+        "Curve - Gas control": "gas_control_pct",
+        "Curve - Airflow control": "airflow_control_pct",
+        "Curve - drumSpeedControl": "drum_speed_control_pct",
         "Curve - Drum temperature": "dt_c",
         "Curve - Inlet temperature": "it_c",
-        "Curve - Gas": "gas_pct",
-        "Curve - Gas control": "gas_control_pct",
-        "Curve - Airflow": "airflow_pct",
-        "Curve - Airflow control": "airflow_control_pct",
-        "Curve - Drum pressure": "drum_pressure_pa",
-        "Curve - Drum speed": "drum_speed_pct",
-        "Curve - drumSpeedControl": "drum_speed_control_pct",
     }
 
     merged: Optional[pd.DataFrame] = None
@@ -372,7 +320,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     merged["time_s_raw"] = pd.to_numeric(merged["time_s"], errors="coerce")
     merged["time_s"] = merged["time_s_raw"]
 
-    # attach events
     if not event_df.empty:
         merged = pd.merge(merged, event_df, on="time_s", how="left")
     else:
@@ -381,31 +328,18 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     merged["roast_id"] = roast_id
     merged["source_file"] = path.name
 
-    # Optional: derive RoR from BT if not directly present
     if "bt_c" in merged.columns:
         bt = pd.to_numeric(merged["bt_c"], errors="coerce")
         t = pd.to_numeric(merged["time_s"], errors="coerce")
         if bt.notna().sum() >= 3:
-            merged["ror_c_per_min"] = (
-                bt.interpolate().diff() / t.interpolate().diff()
-            ) * 60.0
+            merged["ror_c_per_min"] = (bt.interpolate().diff() / t.interpolate().diff()) * 60.0
         else:
             merged["ror_c_per_min"] = None
 
     return roast_session_df, merged
 
 
-# ------------------------------------------------------------
-# QC / sensory import
-# ------------------------------------------------------------
-
-
 def parse_cropster_qc_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Returns:
-    - qc_sessions_df: one row per QC file / session
-    - qc_evaluators_df: one row per evaluator if available
-    """
     path = Path(path)
     wb = _read_excel_all_sheets(path)
 
@@ -469,9 +403,7 @@ def parse_cropster_qc_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame
                 "overall": row.get("Overall"),
                 "non_uniform_cups": row.get("Non-Uniform Cups"),
                 "defective_cups": row.get("Defective Cups"),
-                "general_descriptors": row.get(
-                    "General Descriptors Descriptors", sens_descriptors
-                ),
+                "general_descriptors": row.get("General Descriptors Descriptors", sens_descriptors),
                 "processing": processing,
                 "crop_year": crop_year,
                 "varieties": varieties,
@@ -495,11 +427,6 @@ def parse_cropster_qc_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame
     return qc_sessions_df, qc_evaluators_df
 
 
-# ------------------------------------------------------------
-# Folder import
-# ------------------------------------------------------------
-
-
 def import_cropster_roast_folder(folder: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     folder = Path(folder)
     session_frames = []
@@ -513,12 +440,8 @@ def import_cropster_roast_folder(folder: str | Path) -> tuple[pd.DataFrame, pd.D
         except Exception as e:
             print(f"[WARN] Failed to parse roast file {path.name}: {e}")
 
-    sessions = (
-        pd.concat(session_frames, ignore_index=True) if session_frames else pd.DataFrame()
-    )
-    curves = (
-        pd.concat(curve_frames, ignore_index=True) if curve_frames else pd.DataFrame()
-    )
+    sessions = pd.concat(session_frames, ignore_index=True) if session_frames else pd.DataFrame()
+    curves = pd.concat(curve_frames, ignore_index=True) if curve_frames else pd.DataFrame()
     return sessions, curves
 
 
@@ -536,22 +459,9 @@ def import_cropster_qc_folder(folder: str | Path) -> tuple[pd.DataFrame, pd.Data
         except Exception as e:
             print(f"[WARN] Failed to parse QC file {path.name}: {e}")
 
-    qc_sessions = (
-        pd.concat(qc_session_frames, ignore_index=True)
-        if qc_session_frames
-        else pd.DataFrame()
-    )
-    qc_evaluators = (
-        pd.concat(qc_eval_frames, ignore_index=True)
-        if qc_eval_frames
-        else pd.DataFrame()
-    )
+    qc_sessions = pd.concat(qc_session_frames, ignore_index=True) if qc_session_frames else pd.DataFrame()
+    qc_evaluators = pd.concat(qc_eval_frames, ignore_index=True) if qc_eval_frames else pd.DataFrame()
     return qc_sessions, qc_evaluators
-
-
-# ------------------------------------------------------------
-# Save outputs
-# ------------------------------------------------------------
 
 
 def save_processed_tables(
@@ -565,20 +475,11 @@ def save_processed_tables(
     processed_folder.mkdir(parents=True, exist_ok=True)
 
     roast_sessions.to_parquet(processed_folder / "roast_sessions.parquet", index=False)
-    roast_timeseries.to_parquet(
-        processed_folder / "roast_timeseries.parquet", index=False
-    )
+    roast_timeseries.to_parquet(processed_folder / "roast_timeseries.parquet", index=False)
     qc_sessions.to_parquet(processed_folder / "qc_sessions.parquet", index=False)
 
     if qc_evaluators is not None and not qc_evaluators.empty:
-        qc_evaluators.to_parquet(
-            processed_folder / "qc_evaluators.parquet", index=False
-        )
-
-
-# ------------------------------------------------------------
-# Main entry point
-# ------------------------------------------------------------
+        qc_evaluators.to_parquet(processed_folder / "qc_evaluators.parquet", index=False)
 
 
 def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
@@ -596,13 +497,9 @@ def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Non
             f"Missing keys in [data] section of {resolved_config_path}: {missing_keys_text}"
         )
 
-    roast_folder = _resolve_project_path(
-        cfg["data"]["raw_roast_folder"], resolved_config_path
-    )
+    roast_folder = _resolve_project_path(cfg["data"]["raw_roast_folder"], resolved_config_path)
     qc_folder = _resolve_project_path(cfg["data"]["raw_qc_folder"], resolved_config_path)
-    processed_folder = _resolve_project_path(
-        cfg["data"]["processed_folder"], resolved_config_path
-    )
+    processed_folder = _resolve_project_path(cfg["data"]["processed_folder"], resolved_config_path)
 
     roast_sessions, roast_timeseries = import_cropster_roast_folder(roast_folder)
     qc_sessions, qc_evaluators = import_cropster_qc_folder(qc_folder)
@@ -635,4 +532,3 @@ def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Non
 
 if __name__ == "__main__":
     run_import_from_config()
-

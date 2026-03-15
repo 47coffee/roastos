@@ -58,8 +58,37 @@ def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> ConfigParser:
     return cfg
 
 
+def _normalize_text(x: str) -> str:
+    return (
+        str(x)
+        .strip()
+        .lower()
+        .replace("%", "pct")
+        .replace("°", "")
+        .replace(".", "")
+        .replace("-", "")
+        .replace("_", "")
+        .replace(" ", "")
+    )
+
+
 def _safe_sheet(workbook: dict[str, pd.DataFrame], name: str) -> Optional[pd.DataFrame]:
-    return workbook.get(name)
+    """
+    Fuzzy match workbook sheet names.
+    """
+    if name in workbook:
+        return workbook[name]
+
+    target = _normalize_text(name)
+    for sheet_name, df in workbook.items():
+        if _normalize_text(sheet_name) == target:
+            return df
+
+    for sheet_name, df in workbook.items():
+        if target in _normalize_text(sheet_name):
+            return df
+
+    return None
 
 
 def _read_excel_all_sheets(path: Path) -> dict[str, pd.DataFrame]:
@@ -72,32 +101,21 @@ def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _normalize_colname(name: str) -> str:
-    return (
-        str(name)
-        .strip()
-        .lower()
-        .replace(".", "")
-        .replace("-", "")
-        .replace("_", "")
-    )
-
-
 def _find_first_matching_column(df: pd.DataFrame, aliases: list[str]) -> Optional[str]:
     if df is None or df.empty:
         return None
 
-    normalized = {_normalize_colname(c): c for c in df.columns}
+    normalized = {_normalize_text(c): c for c in df.columns}
 
     for alias in aliases:
-        alias_norm = _normalize_colname(alias)
+        alias_norm = _normalize_text(alias)
         if alias_norm in normalized:
             return normalized[alias_norm]
 
     for c in df.columns:
-        c_norm = _normalize_colname(c)
+        c_norm = _normalize_text(c)
         for alias in aliases:
-            alias_norm = _normalize_colname(alias)
+            alias_norm = _normalize_text(alias)
             if alias_norm in c_norm:
                 return c
 
@@ -149,40 +167,60 @@ def _time_to_seconds(value):
     return None
 
 
+def _coerce_numeric_series(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series.astype(str).str.replace(",", ".", regex=False), errors="coerce")
+
+
 def _normalize_curve_sheet(df: pd.DataFrame, value_name: str) -> pd.DataFrame:
     """
-    Cropster curve sheets are expected in a simple two-column structure:
-    Time (s) | Value
+    Robust Cropster curve parser.
+
+    Expected pattern:
+    - one time column
+    - one or more candidate numeric value columns
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=["time_s", value_name])
 
     out = _clean_columns(df)
 
-    time_col = _find_first_matching_column(out, ["Time (s)", "Time"])
-    value_col = None
-    for c in out.columns:
-        if c != time_col:
-            value_col = c
-            break
-
-    if time_col is None or value_col is None:
+    time_col = _find_first_matching_column(out, ["Time (s)", "Time", "time_s"])
+    if time_col is None:
         return pd.DataFrame(columns=["time_s", value_name])
 
-    out = out[[time_col, value_col]].copy()
-    out.columns = ["time_s", value_name]
-    out["time_s"] = pd.to_numeric(out["time_s"], errors="coerce")
-    out[value_name] = pd.to_numeric(out[value_name], errors="coerce")
-    out = out.dropna(subset=["time_s"]).sort_values("time_s")
-    return out.reset_index(drop=True)
+    candidate_cols = [c for c in out.columns if c != time_col]
+
+    if not candidate_cols:
+        return pd.DataFrame(columns=["time_s", value_name])
+
+    # Prefer a column whose name looks like Value / Actual / Curve / %
+    preferred_aliases = ["Value", "Actual", "Curve", "Percent", "%", "Temperature", "Pressure"]
+    value_col = _find_first_matching_column(out[candidate_cols], preferred_aliases) if isinstance(out[candidate_cols], pd.DataFrame) else None
+
+    # If not found, choose the candidate column with the most numeric values
+    if value_col is None:
+        best_col = None
+        best_numeric = -1
+        for c in candidate_cols:
+            numeric_count = _coerce_numeric_series(out[c]).notna().sum()
+            if numeric_count > best_numeric:
+                best_numeric = numeric_count
+                best_col = c
+        value_col = best_col
+
+    if value_col is None:
+        return pd.DataFrame(columns=["time_s", value_name])
+
+    result = pd.DataFrame({
+        "time_s": _coerce_numeric_series(out[time_col]),
+        value_name: _coerce_numeric_series(out[value_col]),
+    })
+
+    result = result.dropna(subset=["time_s"]).sort_values("time_s").reset_index(drop=True)
+    return result
 
 
 def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Returns:
-    - roast_session_df: one row
-    - roast_timeseries_df: one row per time point
-    """
     path = Path(path)
     wb = _read_excel_all_sheets(path)
 
@@ -220,14 +258,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     drying_time = _time_to_seconds(_extract_first_matching_value(general, ["Drying time"]))
     maillard_time = _time_to_seconds(_extract_first_matching_value(general, ["Maillard time"]))
 
-    roast_value = _extract_first_matching_value(general, ["Roast value"])
-    roast_value_2 = _extract_first_matching_value(general, ["Roast value 2"])
-    sensorial_score = _extract_first_matching_value(general, ["Sensorial score", "Sensorial"])
-    sensorial_descriptors = _extract_first_matching_value(general, ["Sensorial descriptors"])
-    sensorial_notes = _extract_first_matching_value(
-        general, ["Sensorial notes", "Roasting notes", "Notes"]
-    )
-
     roast_session_df = pd.DataFrame(
         [
             {
@@ -251,11 +281,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
                 "color_change_s": color_change,
                 "drying_time_s": drying_time,
                 "maillard_time_s": maillard_time,
-                "roast_value": roast_value,
-                "roast_value_2": roast_value_2,
-                "sensorial_score": sensorial_score,
-                "sensorial_descriptors": sensorial_descriptors,
-                "sensorial_notes": sensorial_notes,
                 "source_file": path.name,
             }
         ]
@@ -264,15 +289,13 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
     event_df = pd.DataFrame(columns=["time_s", "event"])
     if comments is not None and not comments.empty:
         c = comments.copy()
-        c.columns = [str(x).strip() for x in c.columns]
-
         time_col = _find_first_matching_column(c, ["Time (s)", "Time"])
         event_type_col = _find_first_matching_column(c, ["Comment type", "Event type"])
         comment_col = _find_first_matching_column(c, ["Comment", "Event", "Label"])
 
         if time_col is not None:
             event_df = pd.DataFrame()
-            event_df["time_s"] = pd.to_numeric(c[time_col], errors="coerce")
+            event_df["time_s"] = _coerce_numeric_series(c[time_col])
 
             if event_type_col is not None and comment_col is not None:
                 event_df["event"] = c[event_type_col].fillna(c[comment_col])
@@ -286,7 +309,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
             event_df = event_df.dropna(subset=["time_s"])
             event_df["event"] = event_df["event"].astype("string")
 
-    # Explicit canonical map for the tabs you listed
     sheet_map = {
         "Curve - Bean temperature": "bt_c",
         "Curve - Exhaust temperature": "et_c",
@@ -294,19 +316,20 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
         "Curve - Airflow": "airflow_pct",
         "Curve - Drum speed": "drum_speed_pct",
         "Curve - Drum pressure": "drum_pressure_pa",
-        # optional extras if present
-        "Curve - Gas control": "gas_control_pct",
-        "Curve - Airflow control": "airflow_control_pct",
-        "Curve - drumSpeedControl": "drum_speed_control_pct",
-        "Curve - Drum temperature": "dt_c",
-        "Curve - Inlet temperature": "it_c",
     }
 
     merged: Optional[pd.DataFrame] = None
+    found_sheets = []
+    missing_sheets = []
 
     for sheet_name, value_name in sheet_map.items():
         sheet_df = _safe_sheet(wb, sheet_name)
-        curve_df = _normalize_curve_sheet(sheet_df, value_name)
+        if sheet_df is None:
+            missing_sheets.append(sheet_name)
+            curve_df = pd.DataFrame(columns=["time_s", value_name])
+        else:
+            found_sheets.append(sheet_name)
+            curve_df = _normalize_curve_sheet(sheet_df, value_name)
 
         if merged is None:
             merged = curve_df
@@ -317,8 +340,7 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
         merged = pd.DataFrame(columns=["time_s"])
 
     merged = merged.sort_values("time_s").reset_index(drop=True)
-    merged["time_s_raw"] = pd.to_numeric(merged["time_s"], errors="coerce")
-    merged["time_s"] = merged["time_s_raw"]
+    merged["time_s"] = pd.to_numeric(merged["time_s"], errors="coerce")
 
     if not event_df.empty:
         merged = pd.merge(merged, event_df, on="time_s", how="left")
@@ -327,6 +349,15 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
 
     merged["roast_id"] = roast_id
     merged["source_file"] = path.name
+
+    print(f"\nParsed roast file: {path.name}")
+    print("Found curve sheets:", found_sheets)
+    if missing_sheets:
+        print("Missing curve sheets:", missing_sheets)
+
+    for c in ["bt_c", "et_c", "gas_pct", "airflow_pct", "drum_speed_pct", "drum_pressure_pa"]:
+        if c in merged.columns:
+            print(f"{c}: non-null rows = {merged[c].notna().sum()}")
 
     if "bt_c" in merged.columns:
         bt = pd.to_numeric(merged["bt_c"], errors="coerce")
@@ -337,94 +368,6 @@ def parse_cropster_roast_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFr
             merged["ror_c_per_min"] = None
 
     return roast_session_df, merged
-
-
-def parse_cropster_qc_file(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    path = Path(path)
-    wb = _read_excel_all_sheets(path)
-
-    general = (
-        _clean_columns(_safe_sheet(wb, "General"))
-        if _safe_sheet(wb, "General") is not None
-        else pd.DataFrame()
-    )
-    categories_sheet = None
-    per_eval_sheet = None
-
-    for sname in wb.keys():
-        if sname.startswith("Categories"):
-            categories_sheet = _clean_columns(wb[sname])
-        if sname.startswith("Per evaluator"):
-            per_eval_sheet = _clean_columns(wb[sname])
-
-    roast_id = _extract_first_value(general, "Lot ID-Tag")
-    lot_name = _extract_first_value(general, "Lot name")
-    qc_id = _extract_first_value(general, "QC ID-Tag")
-    qc_label = _extract_first_value(general, "QC label")
-    analysis_date = _extract_first_value(general, "Sensorial analysis date")
-    lab = _extract_first_value(general, "Lab")
-    evaluators = _extract_first_value(general, "Evaluators")
-    evaluator_count = _extract_first_value(general, "# Evaluators")
-    sens_descriptors = _extract_first_value(general, "Sens. descriptors")
-    final_score_general = _extract_first_value(general, "Final score")
-    processing = _extract_first_value(general, "Processing")
-    crop_year = _extract_first_value(general, "Crop year")
-    varieties = _extract_first_value(general, "Varieties")
-    country = _extract_first_value(general, "Country")
-    moisture = _extract_first_value(general, "Moisture")
-    water_activity = _extract_first_value(general, "Water activity")
-    density = _extract_first_value(general, "Density")
-
-    row = (
-        categories_sheet.iloc[0]
-        if categories_sheet is not None and not categories_sheet.empty
-        else pd.Series(dtype=object)
-    )
-
-    qc_sessions_df = pd.DataFrame(
-        [
-            {
-                "roast_id": roast_id,
-                "lot_name": lot_name,
-                "qc_id": qc_id,
-                "qc_label": qc_label,
-                "analysis_date": analysis_date,
-                "lab": lab,
-                "evaluators": evaluators,
-                "evaluator_count": evaluator_count,
-                "final_score": row.get("Final score", final_score_general),
-                "fragrance": row.get("Fragrance"),
-                "aroma": row.get("Aroma"),
-                "flavor": row.get("Flavor"),
-                "aftertaste": row.get("Aftertaste"),
-                "acidity": row.get("Acidity"),
-                "sweetness": row.get("Sweetness"),
-                "mouthfeel": row.get("Mouthfeel"),
-                "overall": row.get("Overall"),
-                "non_uniform_cups": row.get("Non-Uniform Cups"),
-                "defective_cups": row.get("Defective Cups"),
-                "general_descriptors": row.get("General Descriptors Descriptors", sens_descriptors),
-                "processing": processing,
-                "crop_year": crop_year,
-                "varieties": varieties,
-                "country": country,
-                "green_moisture": moisture,
-                "green_water_activity": water_activity,
-                "green_density": density,
-                "source_file": path.name,
-            }
-        ]
-    )
-
-    qc_evaluators_df = pd.DataFrame()
-    if per_eval_sheet is not None and not per_eval_sheet.empty:
-        out = per_eval_sheet.copy()
-        out["roast_id"] = roast_id
-        out["qc_id"] = qc_id
-        out["source_file"] = path.name
-        qc_evaluators_df = out
-
-    return qc_sessions_df, qc_evaluators_df
 
 
 def import_cropster_roast_folder(folder: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -452,10 +395,69 @@ def import_cropster_qc_folder(folder: str | Path) -> tuple[pd.DataFrame, pd.Data
 
     for path in sorted(folder.glob("*.xlsx")):
         try:
-            s_df, e_df = parse_cropster_qc_file(path)
-            qc_session_frames.append(s_df)
-            if e_df is not None and not e_df.empty:
-                qc_eval_frames.append(e_df)
+            wb = _read_excel_all_sheets(path)
+            general = _clean_columns(_safe_sheet(wb, "General")) if _safe_sheet(wb, "General") is not None else pd.DataFrame()
+
+            roast_id = _extract_first_value(general, "Lot ID-Tag")
+            lot_name = _extract_first_value(general, "Lot name")
+            qc_id = _extract_first_value(general, "QC ID-Tag")
+            qc_label = _extract_first_value(general, "QC label")
+            analysis_date = _extract_first_value(general, "Sensorial analysis date")
+            lab = _extract_first_value(general, "Lab")
+            evaluators = _extract_first_value(general, "Evaluators")
+            evaluator_count = _extract_first_value(general, "# Evaluators")
+            sens_descriptors = _extract_first_value(general, "Sens. descriptors")
+            final_score_general = _extract_first_value(general, "Final score")
+
+            categories_sheet = None
+            per_eval_sheet = None
+            for sname in wb.keys():
+                if str(sname).startswith("Categories"):
+                    categories_sheet = _clean_columns(wb[sname])
+                if str(sname).startswith("Per evaluator"):
+                    per_eval_sheet = _clean_columns(wb[sname])
+
+            row = (
+                categories_sheet.iloc[0]
+                if categories_sheet is not None and not categories_sheet.empty
+                else pd.Series(dtype=object)
+            )
+
+            qc_sessions_df = pd.DataFrame(
+                [
+                    {
+                        "roast_id": roast_id,
+                        "lot_name": lot_name,
+                        "qc_id": qc_id,
+                        "qc_label": qc_label,
+                        "analysis_date": analysis_date,
+                        "lab": lab,
+                        "evaluators": evaluators,
+                        "evaluator_count": evaluator_count,
+                        "final_score": row.get("Final score", final_score_general),
+                        "fragrance": row.get("Fragrance"),
+                        "aroma": row.get("Aroma"),
+                        "flavor": row.get("Flavor"),
+                        "aftertaste": row.get("Aftertaste"),
+                        "acidity": row.get("Acidity"),
+                        "sweetness": row.get("Sweetness"),
+                        "mouthfeel": row.get("Mouthfeel"),
+                        "overall": row.get("Overall"),
+                        "general_descriptors": row.get("General Descriptors Descriptors", sens_descriptors),
+                        "source_file": path.name,
+                    }
+                ]
+            )
+
+            qc_session_frames.append(qc_sessions_df)
+
+            if per_eval_sheet is not None and not per_eval_sheet.empty:
+                out = per_eval_sheet.copy()
+                out["roast_id"] = roast_id
+                out["qc_id"] = qc_id
+                out["source_file"] = path.name
+                qc_eval_frames.append(out)
+
         except Exception as e:
             print(f"[WARN] Failed to parse QC file {path.name}: {e}")
 
@@ -492,10 +494,7 @@ def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Non
     required_keys = ("raw_roast_folder", "raw_qc_folder", "processed_folder")
     missing_keys = [key for key in required_keys if key not in cfg["data"]]
     if missing_keys:
-        missing_keys_text = ", ".join(missing_keys)
-        raise KeyError(
-            f"Missing keys in [data] section of {resolved_config_path}: {missing_keys_text}"
-        )
+        raise KeyError(f"Missing keys in [data] section: {', '.join(missing_keys)}")
 
     roast_folder = _resolve_project_path(cfg["data"]["raw_roast_folder"], resolved_config_path)
     qc_folder = _resolve_project_path(cfg["data"]["raw_qc_folder"], resolved_config_path)
@@ -503,17 +502,6 @@ def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Non
 
     roast_sessions, roast_timeseries = import_cropster_roast_folder(roast_folder)
     qc_sessions, qc_evaluators = import_cropster_qc_folder(qc_folder)
-
-    required_roast_session_cols = ["roast_id", "source_file"]
-    required_roast_timeseries_cols = ["roast_id", "time_s", "source_file"]
-
-    for col in required_roast_session_cols:
-        if col not in roast_sessions.columns:
-            raise ValueError(f"Missing required roast_sessions column: {col}")
-
-    for col in required_roast_timeseries_cols:
-        if col not in roast_timeseries.columns:
-            raise ValueError(f"Missing required roast_timeseries column: {col}")
 
     save_processed_tables(
         processed_folder=processed_folder,
@@ -523,7 +511,7 @@ def run_import_from_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Non
         qc_evaluators=qc_evaluators,
     )
 
-    print("Cropster import complete.")
+    print("\nCropster import complete.")
     print(f"Roast sessions:   {len(roast_sessions)}")
     print(f"Roast timeseries: {len(roast_timeseries)}")
     print(f"QC sessions:      {len(qc_sessions)}")

@@ -19,6 +19,76 @@ prototype architecture
 → robust hybrid production architecture
 
 ---
+## 2026-03-16 Context
+RoastOS Development Roasdmap as of 2026-03-16, after V3.0 replay-stable simulator baseline.
+V4.1 – Configuration System
+
+Goal:
+Remove hardcoded constants across the project.
+
+Add:
+roastos.ini
+
+Configuration groups:
+
+data
+physics
+simulator
+replay
+mpc
+estimator
+V4.2 – Robust Replay Engine
+
+Improve replay stability:
+
+automatic phase inference
+
+missing sensor interpolation
+
+automatic warmup calibration
+
+sensor noise filtering
+
+V5 – Real MPC Controller
+
+Current MPC uses grid search.
+
+Upgrade to:
+
+CasADi nonlinear MPC
+
+Capabilities:
+
+continuous control
+
+smooth control trajectories
+
+constraint handling.
+
+V6 – Flavor Model
+
+Add sensory outcome model.
+
+roast curve → flavor vector
+
+Use:
+
+cupping scores
+
+roast structure variables
+
+machine state history.
+
+V7 – Real-Time RoastOS
+
+Final system:
+
+Roaster sensors → state estimator → MPC → machine control
+
+Outputs:
+
+live roast recommendations
+
 
 ## 2. Guiding Design Principle
 

@@ -272,6 +272,7 @@ def main():
         axes[1].legend()
         axes[1].grid(True)
 
+        """
         # Controls and recommendations
         axes[2].plot(out_df["time_s"], out_df["actual_gas_now"], label="Actual Gas")
         axes[2].plot(out_df["time_s"], out_df["recommended_gas"], label="Recommended Gas")
@@ -282,6 +283,29 @@ def main():
         axes[2].set_title("Actual vs MPC Recommended Controls")
         axes[2].legend()
         axes[2].grid(True)
+        """
+        # Controls and recommendations with dual axis
+        ax_left = axes[2]
+        ax_right = ax_left.twinx()
+
+        # Gas on left axis (in %)
+        ax_left.plot(out_df["time_s"], out_df["actual_gas_now"] * 100.0, label="Actual Gas %")
+        ax_left.plot(out_df["time_s"], out_df["recommended_gas"] * 100.0, label="Recommended Gas %")
+        ax_left.set_ylabel("Gas (%)")
+
+        # Pressure on right axis (Pa)
+        ax_right.plot(out_df["time_s"], out_df["actual_pressure_now"], label="Actual Pressure")
+        ax_right.plot(out_df["time_s"], out_df["recommended_pressure"], label="Recommended Pressure")
+        ax_right.set_ylabel("Pressure (Pa)")
+
+        ax_left.set_xlabel("Time (s)")
+        ax_left.set_title("Actual vs MPC Recommended Controls")
+        ax_left.grid(True)
+
+        # Combined legend
+        lines_left, labels_left = ax_left.get_legend_handles_labels()
+        lines_right, labels_right = ax_right.get_legend_handles_labels()
+        ax_left.legend(lines_left + lines_right, labels_left + labels_right, loc="best")
 
         plt.tight_layout()
         plt.savefig(plot_path, dpi=150)

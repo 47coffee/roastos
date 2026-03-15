@@ -19,6 +19,59 @@ This file is not a detailed implementation spec.
 It is the bridge between concept, codebase, and system evolution.
 
 ---
+## 1. High-Level Architecture Map - 2026-03-16
+RoastOS System Architecture (Current)
+                ┌────────────────────┐
+                │ Cropster Exports   │
+                └─────────┬──────────┘
+                          │
+                cropster_import.py
+                          │
+                          ▼
+                dataset_builder.py
+                          │
+                          ▼
+              calibration_dataset.parquet
+                          │
+                          ▼
+             physics_calibration.py
+                          │
+                          ▼
+               model_artifact.json
+                          │
+                          ▼
+                sim_loader.py
+                          │
+                          ▼
+           CalibratedRoasterSimulator
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+      replay_validator.py        phase_logic.py
+              │                       │
+              ▼                       ▼
+        Replay metrics        Phase detection
+              │
+              ▼
+        State Estimator
+        (state_estimator.py)
+              │
+              ▼
+         MPC Controller
+        (phase_aware_mpc.py)
+              │
+              ▼
+         Control actions
+      (gas / pressure / drum)
+              │
+              ▼
+         Advisor / Alerts
+        (advisor.py / alerts.py)
+              │
+              ▼
+         Operator guidance
+        (WHAT / WHY / HOW)
+
 ## Current architectural focus
 Primary work area: simulator baseline -> robustness -> phase-aware MPC
 Most recently completed layer: replay-stable coupled simulator baseline (**V3.0**)

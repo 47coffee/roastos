@@ -13,6 +13,75 @@ Only record:
 • calibration improvements  
 
 ---
+## 2026-03-16
+### V3.0 – Phase-Aware Simulator
+
+Implemented:
+
+- Phase-specific BT and ET regression models
+- Simulator parameters loaded from model artifact
+- RoastSimState container for full roast state
+- Latent drum energy model
+
+Result:
+RoastOS simulator can replay historical roasts.
+
+---
+
+### V3.1 – Replay Validation Engine
+
+Added:
+
+replay_validator.py
+
+Features:
+
+- replay real roasts
+- compare predicted vs real
+- compute RMSE metrics
+
+Replay example:
+
+BT RMSE ≈ ~1°C
+
+---
+
+### V3.2 – State Estimator (Observer)
+
+Added RoastStateEstimator.
+
+Purpose:
+
+estimate hidden roast state variables using measurement correction.
+
+Architecture:
+
+Predict → Correct loop.
+
+Corrected variables:
+
+BT
+ET
+RoR
+
+---
+
+### V4.0 – Phase-Aware MPC Controller
+
+Added initial MPC control framework.
+
+Components:
+
+- phase_aware_mpc.py
+- control_grid.py
+- target_profile.py
+
+The controller:
+
+1. simulates candidate control sequences
+2. predicts roast evolution
+3. selects control minimizing deviation from target profile.
+
 ## 2026-03-14
 
 ### V3.0 — Replay-stable coupled simulator baseline

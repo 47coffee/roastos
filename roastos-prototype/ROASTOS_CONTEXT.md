@@ -27,6 +27,220 @@ Primary goals:
 The system is being developed as a **hybrid physics + ML architecture** rather than a purely data-driven system.
 
 ---
+RoastOS Current Implementation State (V3.0 → V4.0)
+
+RoastOS currently implements a phase-aware roasting digital twin with replay validation and MPC control prototype.
+
+The architecture now includes:
+
+Data Pipeline
+
+Cropster exports are imported and normalized into a unified dataset.
+
+Main scripts:
+
+cropster_import.py
+
+dataset_builder.py
+
+The dataset contains:
+
+Bean Temperature (BT)
+
+Exhaust Temperature (ET)
+
+RoR
+
+Gas
+
+Drum pressure
+
+Drum speed
+
+Roast phase labels
+
+Roast context variables
+
+Example dataset statistics:
+
+Rows: ~6000+
+Signals:
+BT
+ET
+RoR
+Gas
+Pressure
+Drum speed
+Phase
+Physics Calibration Model (V3)
+
+The system fits phase-specific regression models for roasting physics.
+
+Each phase:
+
+Drying
+
+Maillard
+
+Development
+
+has separate models.
+
+The BT dynamic equation includes features:
+
+BT_next =
+intercept
++ β1 * e_drum
++ β2 * ET_delta
+- β3 * BT_level
+- β4 * RoR
+- β5 * pressure
++ β6 * gas
+
+These coefficients are learned through least squares regression.
+
+Implemented in:
+
+physics_calibration.py
+
+The fitted model parameters are stored in a JSON artifact and loaded into the simulator.
+
+Phase-Aware Simulator (V3)
+
+The roasting simulator models:
+
+State variables:
+
+BT
+ET
+RoR
+Drum energy
+Moisture burden
+Phase progress
+
+State container:
+
+RoastSimState
+
+defined in
+sim_types.py.
+
+Simulator Parameter Loading
+
+Simulator parameters are loaded from the trained model artifact:
+
+load_simulator_params()
+
+located in
+sim_loader.py.
+
+This loads:
+
+phase BT models
+
+phase ET models
+
+latent state dynamics
+
+normalization parameters
+
+optional context model parameters.
+
+Replay Validation Engine
+
+A full roast replay system is implemented to validate simulator accuracy.
+
+Implemented in:
+
+replay_validator.py
+
+The replay:
+
+loads a roast dataset
+
+reconstructs initial state
+
+steps simulator forward
+
+compares predicted vs actual values.
+
+Replay metrics include:
+
+BT RMSE
+ET RMSE
+RoR RMSE
+Terminal errors
+
+Example replay output:
+
+Replay roast_id: PR-0173
+Replay rows: 979
+
+bt_rmse  ≈ ~1°C
+ror_rmse ≈ few °C/min
+State Estimator (V3.2)
+
+A lightweight observer has been added.
+
+Purpose:
+
+Estimate hidden roast state variables using measured signals.
+
+Design:
+
+Predict → Correct loop similar to EKF.
+
+Corrected channels:
+
+BT
+
+ET
+
+RoR
+
+Implemented in
+
+state_estimator.py
+
+Observer gains:
+
+k_bt
+k_et
+k_ror
+
+The estimator predicts next state using the simulator and then applies measurement correction.
+
+MPC Control Prototype (V4)
+
+Initial Model Predictive Control framework implemented.
+
+Files:
+
+phase_aware_mpc.py
+control_grid.py
+mpc_demo.py
+
+The controller:
+
+Simulates future roast trajectories
+
+Evaluates candidate control sequences
+
+Minimizes deviation from target roast profile
+
+Controls optimized:
+
+Gas
+Drum pressure
+Drum speed
+
+Targets defined through:
+
+TargetTrajectory
+
+structure in target_profile.py
+
+---
 
 # RoastOS State Definition and Context Variables
 

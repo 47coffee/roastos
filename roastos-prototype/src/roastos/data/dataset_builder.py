@@ -10,6 +10,7 @@ from roastos.config import load_settings
 
 START_WEIGHT_CANDIDATES = [
     "start_weight_kg",
+    "start_weight",
     "charge_weight_kg",
     "batch_weight_kg",
     "green_weight_kg",

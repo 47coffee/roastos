@@ -22,6 +22,7 @@
   },
   "context_support": {
     "available_columns": [
+      "start_weight_kg",
       "charge_temp_c",
       "actual_drop_bt",
       "airflow",
